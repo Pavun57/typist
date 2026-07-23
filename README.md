@@ -10,7 +10,7 @@ Typist is a **free, open-source alternative to Wispr Flow** — press a hotkey, 
 
 ## 🎬 Demo
 
-<video src="https://github.com/Pavun57/typist/raw/main/demo-compressed.mp4" controls preload="metadata"></video>
+<video src="https://github.com/user-attachments/assets/2d584ae7-a1f0-4aac-a453-f9b99953dd2b" controls preload="metadata"></video>
 
 Hotkey → speak → typed at your cursor. English and Tamil, fully offline.
 
