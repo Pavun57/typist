@@ -1,0 +1,124 @@
+:root {
+  --surface: rgba(28, 25, 23, 0.95); /* stone-900 */
+  --border: rgba(250, 250, 249, 0.12);
+  --text: #fafaf9;
+  --text-40: rgba(250, 250, 249, 0.4);
+  --accent: #c8102e;
+}
+
+body {
+  margin: 0;
+  background: transparent;
+  font-family:
+    'IBM Plex Sans', 'Hanken Grotesk', 'Barlow', 'Host Grotesk', 'DM Sans',
+    system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  margin: 16px;
+  padding: 0 16px;
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.pill.recording {
+  cursor: pointer;
+}
+
+.label {
+  letter-spacing: 0.02em;
+}
+
+.cancel-hint {
+  color: var(--text-40);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* ---- Listening: waveform bars ---- */
+
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.bars span {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--accent);
+  height: 6px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bars span {
+    animation: eq 1s ease-in-out infinite;
+  }
+  .bars span:nth-child(1) {
+    animation-delay: 0s;
+  }
+  .bars span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .bars span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  .bars span:nth-child(4) {
+    animation-delay: 0.45s;
+  }
+  .bars span:nth-child(5) {
+    animation-delay: 0.6s;
+  }
+}
+
+@keyframes eq {
+  0%,
+  100% {
+    height: 5px;
+  }
+  50% {
+    height: 18px;
+  }
+}
+
+/* ---- Transcribing: accent ring spinner ---- */
+
+.ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(200, 16, 46, 0.25);
+  border-top-color: var(--accent);
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ring {
+    animation: spin 0.7s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Error ---- */
+
+.pill.error {
+  color: var(--accent);
+  border-color: rgba(200, 16, 46, 0.4);
+}
