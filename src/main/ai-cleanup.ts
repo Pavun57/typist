@@ -18,7 +18,7 @@ Step 1 — classify the dictated text:
 
 Step 2 — rewrite:
 - PROMPT → rewrite as a clear, well-structured, detailed prompt. Fix grammar, remove filler words and false starts. Do NOT answer the prompt — only improve it.
-- MESSAGE → fix ONLY grammar, spelling, and punctuation. Do NOT rephrase, do NOT make it more formal or polished, do NOT change word choices, and keep the speaker's sentence structure wherever grammar allows. The output must sound exactly like the speaker — same tone, same style, same words. Do not add or remove content.
+- MESSAGE → fix ONLY actual spelling and grammar mistakes. STRICTLY preserve the speaker's tone, slang, informal words, contractions, abbreviations, and sentence style. Do NOT make it formal, do NOT rephrase, do NOT replace slang or casual words with formal equivalents, do NOT add politeness or extra words. If the speaker is casual, the output stays casual. If it is not an actual error, do not change it.
 
 Output rules:
 - Output ONLY the rewritten text.
@@ -34,7 +34,16 @@ const FEW_SHOT: { role: string; content: string }[] = [
   },
   {
     role: 'assistant',
-    content: 'The market is crowded, and I am not coming.',
+    content: "The market is crowded and I'm not coming.",
+  },
+  {
+    role: 'user',
+    content:
+      'Rewrite this dictated text:\n"""\nyo the deploy is broken af rn can u hop on a call\n"""',
+  },
+  {
+    role: 'assistant',
+    content: 'Yo the deploy is broken af rn, can you hop on a call?',
   },
   {
     role: 'user',

@@ -43,12 +43,20 @@ Grab the latest package for your OS from [**Releases**](https://github.com/Pavun
 
 > **🍎 macOS: "Typist is damaged and can't be opened"**
 >
-> The app isn't damaged — macOS quarantines unsigned apps. After copying Typist
-> to **Applications**, run this once in Terminal:
+> The app isn't damaged — macOS quarantines unsigned apps. Three ways to fix it (once, permanent):
+>
+> **Right-click** (easiest): right-click **Typist.app** instead of double-clicking →
+> choose **Open** → click **Open** again if prompted.
+>
+> **Terminal** (after dragging Typist to **Applications**):
 >
 > ```bash
-> xattr -cr /Applications/Typist.app
+> sudo xattr -cr /Applications/Typist.app
 > ```
+>
+> **Or System Settings**: try to open Typist (click **Cancel** on the dialog), then go to
+> **System Settings → Privacy & Security**, scroll down, and click
+> **Open Anyway** next to the Typist message.
 >
 > Then open it normally, and grant **Microphone** + **Accessibility** permissions when asked.
 
