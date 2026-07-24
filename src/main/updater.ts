@@ -1,14 +1,21 @@
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import electronUpdater from 'electron-updater';
 import type { UpdateStatus } from '../shared/types';
 
 /**
  * Auto-updates via GitHub Releases (electron-updater). Only active in
- * packaged builds; on Linux only the AppImage is self-updatable (deb users
- * get an "available" notice and update via the package manager / download).
+ * packaged builds. Self-update works on Windows, macOS, and Linux AppImage;
+ * deb/rpm installs only get a notice plus a link to the Releases page
+ * (their updater path needs pkexec/root and is not reliable).
  */
 
 const { autoUpdater } = electronUpdater;
+
+const RELEASES_URL = 'https://github.com/Pavun57/typist/releases/latest';
+
+/** Whether this install can replace itself with a downloaded update. */
+const canSelfUpdate =
+  process.platform !== 'linux' || !!process.env.APPIMAGE;
 
 let notify: (s: UpdateStatus) => void = () => {};
 let ready = false;
@@ -17,12 +24,18 @@ export function initUpdater(onStatus: (s: UpdateStatus) => void): void {
   notify = onStatus;
   if (!app.isPackaged) return;
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = canSelfUpdate;
+  autoUpdater.autoInstallOnAppQuit = canSelfUpdate;
 
   autoUpdater.on('checking-for-update', () => notify({ state: 'checking' }));
   autoUpdater.on('update-available', (info) =>
-    notify({ state: 'available', version: info.version }),
+    notify({
+      state: 'available',
+      version: info.version,
+      message: canSelfUpdate
+        ? undefined
+        : 'This install cannot self-update — download the new package.',
+    }),
   );
   autoUpdater.on('update-not-available', () => notify({ state: 'none' }));
   autoUpdater.on('download-progress', (p) =>
@@ -52,5 +65,9 @@ export async function checkForUpdates(): Promise<void> {
 }
 
 export function installUpdate(): void {
+  if (!canSelfUpdate) {
+    void shell.openExternal(RELEASES_URL);
+    return;
+  }
   if (ready) autoUpdater.quitAndInstall();
 }

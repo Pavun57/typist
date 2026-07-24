@@ -454,6 +454,11 @@ export default function App() {
               Restart &amp; update
             </button>
           )}
+          {update.state === 'available' && update.message && (
+            <button onClick={() => void window.typist.installUpdate()}>
+              Download update
+            </button>
+          )}
         </div>
         {update.state !== 'idle' && (
           <span className={`status ${update.state === 'error' ? 'err' : ''}`}>

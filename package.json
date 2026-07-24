@@ -1,6 +1,6 @@
 {
   "name": "typist",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Push-to-talk multilingual voice typing — cloud (Sarvam) or offline (local Whisper) speech-to-text",
   "author": {
     "name": "Pavun",
@@ -42,7 +42,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [
