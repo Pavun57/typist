@@ -93,7 +93,7 @@ export function registerIpc(getSettingsWin: () => BrowserWindow | null): void {
   });
 
   ipcMain.handle('update:check', (): Promise<void> => checkForUpdates());
-  ipcMain.handle('update:install', (): void => installUpdate());
+  ipcMain.handle('update:install', (): Promise<void> => installUpdate());
 
   ipcMain.handle(
     'ai:validate',

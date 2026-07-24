@@ -459,7 +459,7 @@ export default function App() {
           )}
           {update.state === 'available' && update.message && (
             <button onClick={() => void window.typist.installUpdate()}>
-              Download update
+              Update now
             </button>
           )}
         </div>
