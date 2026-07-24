@@ -129,6 +129,10 @@ export async function onAudio(buffer: ArrayBuffer): Promise<void> {
       }
     }
 
+    // Single-line output: newlines in the transcript would be typed as
+    // Enter, which sends half-finished messages in chat apps.
+    transcript = transcript.replace(/\s+/g, ' ').trim();
+
     // Hide the overlay and give the WM a moment so keyboard focus returns to
     // the field the user was dictating into before we inject the text.
     wins.overlay()?.hide();
