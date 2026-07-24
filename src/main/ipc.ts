@@ -1,5 +1,6 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import type {
+  AiCloudProvider,
   DownloadProgress,
   Result,
   Settings,
@@ -16,6 +17,7 @@ import {
   listModels,
 } from './local-stt';
 import { checkForUpdates, installUpdate } from './updater';
+import { fetchModels, validateAiKey } from './ai-cleanup';
 import {
   cancelRecording,
   onAudio,
@@ -92,6 +94,23 @@ export function registerIpc(getSettingsWin: () => BrowserWindow | null): void {
 
   ipcMain.handle('update:check', (): Promise<void> => checkForUpdates());
   ipcMain.handle('update:install', (): void => installUpdate());
+
+  ipcMain.handle(
+    'ai:validate',
+    (_e, provider: AiCloudProvider, key: string): Promise<Result> =>
+      validateAiKey(provider, key),
+  );
+
+  ipcMain.handle('ai:models', (_e, provider: AiCloudProvider) => {
+    const { groqApiKey, openrouterApiKey, nvidiaApiKey } = getSettings();
+    const key =
+      provider === 'groq'
+        ? groqApiKey
+        : provider === 'nvidia'
+          ? nvidiaApiKey
+          : openrouterApiKey;
+    return fetchModels(provider, key);
+  });
 
   ipcMain.handle('recording:cancel', (): void => {
     cancelRecording();

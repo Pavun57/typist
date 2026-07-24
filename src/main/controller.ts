@@ -3,6 +3,7 @@ import type { AppState, StatePayload } from '../shared/types';
 import { getSettings } from './settings';
 import { transcribePcm } from './sarvam';
 import { isDownloaded, transcribeLocal } from './local-stt';
+import { cleanupText } from './ai-cleanup';
 import { pasteText } from './paste';
 
 interface Windows {
@@ -87,16 +88,57 @@ export async function onAudio(buffer: ArrayBuffer): Promise<void> {
   try {
     const { provider, apiKey, localModel, language } = getSettings();
     const pcm = new Float32Array(buffer);
-    const transcript =
+    let transcript =
       provider === 'local'
         ? await transcribeLocal(localModel, pcm, language)
         : await transcribePcm(apiKey, pcm, language);
+
+    // Optional AI cleanup: enhance prompts, grammar-fix messages. Fail-open —
+    // a cleanup error never loses the transcript, but it is surfaced.
+    const { aiProvider, aiModel, groqApiKey, openrouterApiKey, nvidiaApiKey, translateToEnglish } =
+      getSettings();
+    let cleanupError = '';
+    if (aiProvider !== 'none') {
+      const aiKey =
+        aiProvider === 'groq'
+          ? groqApiKey
+          : aiProvider === 'nvidia'
+            ? nvidiaApiKey
+            : openrouterApiKey;
+      if (aiKey) {
+        setState('polishing');
+        try {
+          transcript = await cleanupText(
+            aiProvider,
+            aiKey,
+            aiModel,
+            transcript,
+            translateToEnglish,
+          );
+        } catch (err) {
+          cleanupError = err instanceof Error ? err.message : 'AI cleanup failed.';
+        }
+      } else {
+        const name =
+          aiProvider === 'groq'
+            ? 'Groq'
+            : aiProvider === 'nvidia'
+              ? 'NVIDIA'
+              : 'OpenRouter';
+        cleanupError = `Add your ${name} API key in Settings — used raw transcript.`;
+      }
+    }
+
     // Hide the overlay and give the WM a moment so keyboard focus returns to
     // the field the user was dictating into before we inject the text.
     wins.overlay()?.hide();
     await new Promise((r) => setTimeout(r, 300));
     await pasteText(transcript);
-    setState('idle');
+    if (cleanupError) {
+      setState('error', `${cleanupError} (raw transcript was used)`);
+    } else {
+      setState('idle');
+    }
   } catch (err) {
     setState('error', err instanceof Error ? err.message : 'Transcription failed.');
   }

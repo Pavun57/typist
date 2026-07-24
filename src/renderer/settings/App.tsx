@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { LANGUAGES } from '../../shared/types';
+import { AI_MODELS, LANGUAGES } from '../../shared/types';
 import type {
+  AiProviderId,
   ModelInfo,
   Settings,
   SttState,
@@ -42,8 +43,35 @@ export default function App() {
   const [downloading, setDownloading] = useState<Record<string, number>>({});
   const [modelMsg, setModelMsg] = useState('');
   const [update, setUpdate] = useState<UpdateStatus>({ state: 'idle' });
+  const [aiProvider, setAiProvider] = useState<AiProviderId>('none');
+  const [aiModel, setAiModel] = useState('');
+  const [groqApiKey, setGroqApiKey] = useState('');
+  const [openrouterApiKey, setOpenrouterApiKey] = useState('');
+  const [nvidiaApiKey, setNvidiaApiKey] = useState('');
+  const [translateToEnglish, setTranslateToEnglish] = useState(false);
+  const [aiKeyStatus, setAiKeyStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiModels, setAiModels] = useState<{ id: string; label: string }[]>([]);
 
   const refreshStt = () => window.typist.getSttState().then(setStt);
+
+  const loadAiModels = (provider: 'groq' | 'openrouter' | 'nvidia') => {
+    window.typist
+      .fetchAiModels(provider)
+      .then((models) => {
+        setAiModels(models.length > 0 ? models : AI_MODELS[provider]);
+      })
+      .catch(() => setAiModels(AI_MODELS[provider]));
+  };
+
+  const aiKeyFor = (p: 'groq' | 'openrouter' | 'nvidia'): string =>
+    p === 'groq' ? groqApiKey : p === 'nvidia' ? nvidiaApiKey : openrouterApiKey;
+
+  const setAiKeyFor = (p: 'groq' | 'openrouter' | 'nvidia', v: string): void => {
+    if (p === 'groq') setGroqApiKey(v);
+    else if (p === 'nvidia') setNvidiaApiKey(v);
+    else setOpenrouterApiKey(v);
+  };
 
   useEffect(() => {
     void window.typist.getSettings().then((s) => {
@@ -52,6 +80,13 @@ export default function App() {
       setLanguage(s.language);
       setHotkey(s.hotkey);
       setLaunchAtLogin(s.launchAtLogin);
+      setAiProvider(s.aiProvider);
+      setAiModel(s.aiModel);
+      setGroqApiKey(s.groqApiKey);
+      setOpenrouterApiKey(s.openrouterApiKey);
+      setNvidiaApiKey(s.nvidiaApiKey);
+      setTranslateToEnglish(s.translateToEnglish);
+      if (s.aiProvider !== 'none') loadAiModels(s.aiProvider);
     });
     void refreshStt();
     const offProgress = window.typist.onDownloadProgress((p) => {
@@ -67,7 +102,17 @@ export default function App() {
   if (!settings || !stt) return <div className="app">Loading…</div>;
 
   const save = async () => {
-    const s = await window.typist.setSettings({ apiKey, language, launchAtLogin });
+    const s = await window.typist.setSettings({
+      apiKey,
+      language,
+      launchAtLogin,
+      aiProvider,
+      aiModel,
+      groqApiKey,
+      openrouterApiKey,
+      nvidiaApiKey,
+      translateToEnglish,
+    });
     setSettingsState(s);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -79,6 +124,21 @@ export default function App() {
     const result = await window.typist.validateApiKey(apiKey);
     setKeyStatus(result);
     setTesting(false);
+  };
+
+  const testAiKey = async () => {
+    if (aiProvider === 'none') return;
+    setTestingAi(true);
+    setAiKeyStatus(null);
+    const key = aiKeyFor(aiProvider);
+    const result = await window.typist.validateAiKey(aiProvider, key);
+    setAiKeyStatus(result);
+    setTestingAi(false);
+    if (result.ok) {
+      // Persist the key so the main process can use it, then load models.
+      await window.typist.setSettings({ [`${aiProvider}ApiKey`]: key });
+      loadAiModels(aiProvider);
+    }
   };
 
   const onHotkeyKeyDown = async (e: React.KeyboardEvent) => {
@@ -233,6 +293,108 @@ export default function App() {
           ))}
           {modelMsg && <span className="status">{modelMsg}</span>}
         </div>
+      )}
+
+      <div className="field">
+        <label>AI cleanup (optional)</label>
+        <span className="hint">
+          After transcription, an LLM detects intent: prompts meant for an AI
+          get enhanced, messages to people get grammar fixes only.
+        </span>
+        {(['none', 'groq', 'openrouter', 'nvidia'] as const).map((p) => (
+          <label className="checkbox" key={p}>
+            <input
+              type="radio"
+              name="aiProvider"
+              checked={aiProvider === p}
+              onChange={() => {
+                setAiProvider(p);
+                setAiKeyStatus(null);
+                if (p !== 'none') loadAiModels(p);
+              }}
+            />
+            {p === 'none'
+              ? 'Off'
+              : p === 'groq'
+                ? 'Groq (free tier)'
+                : p === 'openrouter'
+                  ? 'OpenRouter (free models)'
+                  : 'NVIDIA NIM (free tier)'}
+          </label>
+        ))}
+      </div>
+
+      {aiProvider !== 'none' && (
+        <>
+          <div className="field">
+            <label htmlFor="aikey">
+              {aiProvider === 'groq'
+                ? 'Groq'
+                : aiProvider === 'nvidia'
+                  ? 'NVIDIA'
+                  : 'OpenRouter'}{' '}
+              API key
+            </label>
+            <div className="row">
+              <input
+                id="aikey"
+                type="password"
+                style={{ flex: 1 }}
+                placeholder="API key"
+                value={aiKeyFor(aiProvider)}
+                onChange={(e) => setAiKeyFor(aiProvider, e.target.value)}
+              />
+              <button className="secondary" onClick={testAiKey} disabled={testingAi}>
+                {testingAi ? 'Testing…' : 'Test key'}
+              </button>
+            </div>
+            <span className="hint">
+              {aiProvider === 'groq'
+                ? 'Free key at console.groq.com → API Keys.'
+                : aiProvider === 'nvidia'
+                  ? 'Free key at build.nvidia.com → any model → Get API Key.'
+                  : 'Free key at openrouter.ai → Keys.'}
+            </span>
+            {aiKeyStatus && (
+              <span className={`status ${aiKeyStatus.ok ? 'ok' : 'err'}`}>
+                {aiKeyStatus.message}
+              </span>
+            )}
+          </div>
+
+          <div className="field">
+            <label htmlFor="aimodel">Model</label>
+            <input
+              id="aimodel"
+              type="text"
+              list="ai-models"
+              placeholder="Model ID"
+              value={aiModel}
+              onChange={(e) => setAiModel(e.target.value)}
+            />
+            <datalist id="ai-models">
+              {(aiModels.length > 0 ? aiModels : AI_MODELS[aiProvider]).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </datalist>
+            <span className="hint">
+              Models are fetched live from the provider — pick one or type any
+              model ID. Leave empty for the default.
+            </span>
+          </div>
+
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={translateToEnglish}
+              onChange={(e) => setTranslateToEnglish(e.target.checked)}
+            />
+            Translate to English — output fluent English (tone-matched messages,
+            structured prompts) instead of the spoken language
+          </label>
+        </>
       )}
 
       <div className="field">

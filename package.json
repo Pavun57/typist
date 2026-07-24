@@ -1,6 +1,6 @@
 {
   "name": "typist",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Push-to-talk multilingual voice typing — cloud (Sarvam) or offline (local Whisper) speech-to-text",
   "author": {
     "name": "Pavun",

@@ -9,21 +9,33 @@ const DEFAULT_LOCAL_MODEL = 'onnx-community/whisper-base';
 
 interface Schema {
   apiKeyEnc: string;
+  groqApiKeyEnc: string;
+  openrouterApiKeyEnc: string;
+  nvidiaApiKeyEnc: string;
   language: string;
   hotkey: string;
   launchAtLogin: boolean;
   provider: SttProviderId;
   localModel: string;
+  aiProvider: 'none' | 'groq' | 'openrouter' | 'nvidia';
+  aiModel: string;
+  translateToEnglish: boolean;
 }
 
 const store = new Store<Schema>({
   defaults: {
     apiKeyEnc: '',
+    groqApiKeyEnc: '',
+    openrouterApiKeyEnc: '',
+    nvidiaApiKeyEnc: '',
     language: 'unknown',
     hotkey: DEFAULT_HOTKEY,
     launchAtLogin: false,
     provider: 'sarvam',
     localModel: DEFAULT_LOCAL_MODEL,
+    aiProvider: 'none',
+    aiModel: '',
+    translateToEnglish: false,
   },
 });
 
@@ -90,15 +102,31 @@ export function getSettings(): Settings {
     launchAtLogin: store.get('launchAtLogin'),
     provider: store.get('provider'),
     localModel: store.get('localModel'),
+    aiProvider: store.get('aiProvider'),
+    aiModel: store.get('aiModel'),
+    groqApiKey: decrypt(store.get('groqApiKeyEnc')),
+    openrouterApiKey: decrypt(store.get('openrouterApiKeyEnc')),
+    nvidiaApiKey: decrypt(store.get('nvidiaApiKeyEnc')),
+    translateToEnglish: store.get('translateToEnglish'),
   };
 }
 
 export function setSettings(partial: Partial<Settings>): Settings {
   if (partial.apiKey !== undefined) store.set('apiKeyEnc', encrypt(partial.apiKey));
+  if (partial.groqApiKey !== undefined)
+    store.set('groqApiKeyEnc', encrypt(partial.groqApiKey));
+  if (partial.openrouterApiKey !== undefined)
+    store.set('openrouterApiKeyEnc', encrypt(partial.openrouterApiKey));
+  if (partial.nvidiaApiKey !== undefined)
+    store.set('nvidiaApiKeyEnc', encrypt(partial.nvidiaApiKey));
   if (partial.language !== undefined) store.set('language', partial.language);
   if (partial.hotkey !== undefined) store.set('hotkey', partial.hotkey);
   if (partial.provider !== undefined) store.set('provider', partial.provider);
   if (partial.localModel !== undefined) store.set('localModel', partial.localModel);
+  if (partial.aiProvider !== undefined) store.set('aiProvider', partial.aiProvider);
+  if (partial.aiModel !== undefined) store.set('aiModel', partial.aiModel);
+  if (partial.translateToEnglish !== undefined)
+    store.set('translateToEnglish', partial.translateToEnglish);
   if (partial.launchAtLogin !== undefined) {
     store.set('launchAtLogin', partial.launchAtLogin);
     applyLaunchAtLogin(partial.launchAtLogin);

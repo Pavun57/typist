@@ -1,4 +1,9 @@
-export type AppState = 'idle' | 'recording' | 'transcribing' | 'error';
+export type AppState =
+  | 'idle'
+  | 'recording'
+  | 'transcribing'
+  | 'polishing'
+  | 'error';
 
 export interface StatePayload {
   state: AppState;
@@ -7,6 +12,11 @@ export interface StatePayload {
 
 export type SttProviderId = 'sarvam' | 'local';
 
+export type AiProviderId = 'none' | 'groq' | 'openrouter' | 'nvidia';
+
+/** AI cleanup providers (excludes 'none'). */
+export type AiCloudProvider = Exclude<AiProviderId, 'none'>;
+
 export interface Settings {
   apiKey: string;
   language: string;
@@ -14,7 +24,41 @@ export interface Settings {
   launchAtLogin: boolean;
   provider: SttProviderId;
   localModel: string;
+  aiProvider: AiProviderId;
+  aiModel: string;
+  groqApiKey: string;
+  openrouterApiKey: string;
+  nvidiaApiKey: string;
+  translateToEnglish: boolean;
 }
+
+/** Free-tier models per AI cleanup provider (suggestions; custom IDs allowed). */
+export const AI_MODELS: Record<AiCloudProvider, { id: string; label: string }[]> = {
+  groq: [
+    { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (free tier)' },
+    { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant (free tier)' },
+    { id: 'gemma2-9b-it', label: 'Gemma 2 9B (free tier)' },
+  ],
+  openrouter: [
+    {
+      id: 'meta-llama/llama-3.3-70b-instruct:free',
+      label: 'Llama 3.3 70B (free)',
+    },
+    { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (free)' },
+    { id: 'qwen/qwen3-32b:free', label: 'Qwen3 32B (free)' },
+  ],
+  nvidia: [
+    { id: 'meta/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (free tier)' },
+    { id: 'meta/llama-3.1-8b-instruct', label: 'Llama 3.1 8B (free tier)' },
+    { id: 'google/gemma-2-9b-it', label: 'Gemma 2 9B (free tier)' },
+  ],
+};
+
+export const DEFAULT_AI_MODEL: Record<AiCloudProvider, string> = {
+  groq: 'llama-3.3-70b-versatile',
+  openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
+  nvidia: 'meta/llama-3.3-70b-instruct',
+};
 
 export interface Result {
   ok: boolean;
@@ -95,4 +139,8 @@ export interface TypistApi {
   checkForUpdates(): Promise<void>;
   installUpdate(): Promise<void>;
   onUpdateStatus(cb: (s: UpdateStatus) => void): () => void;
+  validateAiKey(provider: AiCloudProvider, key: string): Promise<Result>;
+  fetchAiModels(
+    provider: AiCloudProvider,
+  ): Promise<{ id: string; label: string }[]>;
 }

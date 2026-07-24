@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type {
+  AiCloudProvider,
   DownloadProgress,
   RecorderCommand,
   Settings,
@@ -40,6 +41,10 @@ const api: TypistApi = {
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   onUpdateStatus: (cb) => subscribe<UpdateStatus>('update:status', cb),
+  validateAiKey: (provider: AiCloudProvider, key: string) =>
+    ipcRenderer.invoke('ai:validate', provider, key),
+  fetchAiModels: (provider: AiCloudProvider) =>
+    ipcRenderer.invoke('ai:models', provider),
 };
 
 contextBridge.exposeInMainWorld('typist', api);

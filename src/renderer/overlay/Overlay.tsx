@@ -37,6 +37,15 @@ export default function Overlay() {
     );
   }
 
+  if (payload.state === 'polishing') {
+    return (
+      <div className="pill">
+        <span className="ring" />
+        <span className="label">Polishing with AI…</span>
+      </div>
+    );
+  }
+
   return (
     <div className="pill error">
       <span className="label">{payload.message ?? 'Something went wrong.'}</span>
