@@ -23,7 +23,41 @@ Step 2 — rewrite:
 Output rules:
 - Output ONLY the rewritten text.
 - NO replies, NO questions, NO explanations, NO labels, NO quotes.
+- Never describe what you did (no "I have identified…", "Here is the rewritten text…").
 - Never acknowledge the text (no "I understand", "Sure", "Here is...").`;
+
+/** Few-shot examples that anchor the exact output format. */
+const FEW_SHOT: { role: string; content: string }[] = [
+  {
+    role: 'user',
+    content: 'Rewrite this dictated text:\n"""\nthe market is crowed and i not coming\n"""',
+  },
+  {
+    role: 'assistant',
+    content: 'The market is crowded, and I am not coming.',
+  },
+  {
+    role: 'user',
+    content:
+      'Rewrite this dictated text:\n"""\num write me like a python script that sorts a list\n"""',
+  },
+  {
+    role: 'assistant',
+    content:
+      'Write a Python script that sorts a list. Provide a clear, reusable function with example usage, and handle edge cases such as empty lists and non-numeric values.',
+  },
+];
+
+/** Strips meta-commentary if the model narrates despite the instructions. */
+function sanitizeOutput(out: string, fallback: string): string {
+  let s = out.trim();
+  const marker = /here is the (rewritten|enhanced|final|improved) text[:\s]*/i;
+  const m = marker.exec(s);
+  if (m) s = s.slice(m.index + m[0].length);
+  s = s.replace(/^(message|prompt|rewritten text|output|result)\s*[:\-–]\s*/i, '');
+  s = s.replace(/^["'“”`]+|["'“”`]+$/g, '').trim();
+  return s || fallback;
+}
 
 const SAME_LANGUAGE_RULE = '- Always respond in the same language as the input.';
 const TRANSLATE_RULE =
@@ -116,6 +150,7 @@ export async function cleanupText(
       temperature: 0.2,
       messages: [
         { role: 'system', content: systemPrompt(translateToEnglish) },
+        ...FEW_SHOT,
         {
           role: 'user',
           content: `Rewrite this dictated text:\n"""\n${text}\n"""`,
@@ -139,8 +174,8 @@ export async function cleanupText(
     choices?: { message?: { content?: string } }[];
   };
   const cleaned = data.choices?.[0]?.message?.content?.trim();
-  // Never return empty — fall back to the raw transcript. Strip wrapping
-  // quotes if the model added them despite instructions.
+  // Never return empty — fall back to the raw transcript. Strip meta
+  // commentary and wrapping quotes if the model added them anyway.
   if (!cleaned) return text;
-  return cleaned.replace(/^["'“”]+|["'“”]+$/g, '').trim() || text;
+  return sanitizeOutput(cleaned, text);
 }
