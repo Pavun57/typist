@@ -69,5 +69,9 @@ export function installUpdate(): void {
     void shell.openExternal(RELEASES_URL);
     return;
   }
-  if (ready) autoUpdater.quitAndInstall();
+  if (ready) {
+    // Let the UI show the "installing" state before the process exits.
+    notify({ state: 'installing' });
+    setTimeout(() => autoUpdater.quitAndInstall(), 1500);
+  }
 }

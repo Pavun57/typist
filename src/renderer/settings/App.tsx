@@ -185,9 +185,12 @@ export default function App() {
   const updateText: Record<string, string> = {
     idle: '',
     checking: 'Checking for updates…',
-    available: `Update ${update.version ?? ''} available — downloading…`,
+    available:
+      update.message ??
+      `Update ${update.version ?? ''} available — downloading…`,
     downloading: `Downloading update… ${update.percent ?? 0}%`,
     ready: `Update ${update.version ?? ''} ready to install.`,
+    installing: 'Installing update… the app will restart in a moment.',
     none: 'You are on the latest version.',
     error: update.message ?? 'Update check failed.',
   };

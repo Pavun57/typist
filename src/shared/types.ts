@@ -95,6 +95,7 @@ export type UpdateState =
   | 'available'
   | 'downloading'
   | 'ready'
+  | 'installing'
   | 'none'
   | 'error';
 
