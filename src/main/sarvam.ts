@@ -1,9 +1,42 @@
 import type { Result } from '../shared/types';
+import { pcmToWav } from './audio';
 
 const STT_URL = 'https://api.sarvam.ai/speech-to-text';
 const MODEL = 'saarika:v2.5';
 
 export class SarvamError extends Error {}
+
+const SAMPLE_RATE = 16000;
+/** Sarvam's sync REST API accepts max 30 s per request — chunk with margin. */
+const CHUNK_SAMPLES = 25 * SAMPLE_RATE;
+
+/**
+ * Transcribes 16 kHz mono PCM of any length by splitting it into ≤25 s
+ * chunks (Sarvam's REST limit is 30 s) and joining the transcripts.
+ */
+export async function transcribePcm(
+  apiKey: string,
+  pcm: Float32Array,
+  language: string,
+): Promise<string> {
+  const parts: string[] = [];
+  for (let start = 0; start < pcm.length; start += CHUNK_SAMPLES) {
+    const chunk = pcm.subarray(start, start + CHUNK_SAMPLES);
+    try {
+      parts.push(await transcribe(apiKey, pcmToWav(chunk), language));
+    } catch (err) {
+      // A chunk of pure silence is fine to skip; anything else is fatal.
+      if (err instanceof SarvamError && err.message === 'No speech detected.') {
+        continue;
+      }
+      throw err;
+    }
+  }
+  const text = parts.join(' ').trim();
+  if (!text) throw new SarvamError('No speech detected.');
+  return text;
+}
+
 
 /**
  * Transcribes a 16 kHz mono WAV buffer with Sarvam STT.

@@ -1,5 +1,7 @@
 import Store from 'electron-store';
 import { app, safeStorage } from 'electron';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { Settings, SttProviderId } from '../shared/types';
 
 const DEFAULT_HOTKEY = 'CommandOrControl+Shift+Space';
@@ -45,6 +47,41 @@ function decrypt(stored: string): string {
   }
 }
 
+/**
+ * Applies the launch-at-login preference for the current platform.
+ * Electron's setLoginItemSettings covers macOS/Windows but is a no-op on
+ * Linux, so there we write an XDG autostart .desktop entry ourselves.
+ */
+export function applyLaunchAtLogin(enable: boolean): void {
+  if (process.platform === 'linux') {
+    const desktopFile = join(
+      app.getPath('home'),
+      '.config',
+      'autostart',
+      'typist.desktop',
+    );
+    if (enable) {
+      mkdirSync(dirname(desktopFile), { recursive: true });
+      writeFileSync(
+        desktopFile,
+        [
+          '[Desktop Entry]',
+          'Type=Application',
+          'Name=Typist',
+          `Exec=${process.execPath}`,
+          'X-GNOME-Autostart-enabled=true',
+          'Comment=Push-to-talk voice typing',
+          '',
+        ].join('\n'),
+      );
+    } else {
+      rmSync(desktopFile, { force: true });
+    }
+    return;
+  }
+  app.setLoginItemSettings({ openAtLogin: enable });
+}
+
 export function getSettings(): Settings {
   return {
     apiKey: decrypt(store.get('apiKeyEnc')),
@@ -64,7 +101,7 @@ export function setSettings(partial: Partial<Settings>): Settings {
   if (partial.localModel !== undefined) store.set('localModel', partial.localModel);
   if (partial.launchAtLogin !== undefined) {
     store.set('launchAtLogin', partial.launchAtLogin);
-    app.setLoginItemSettings({ openAtLogin: partial.launchAtLogin });
+    applyLaunchAtLogin(partial.launchAtLogin);
   }
   return getSettings();
 }

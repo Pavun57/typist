@@ -38,8 +38,19 @@ Grab the latest package for your OS from [**Releases**](https://github.com/Pavun
 | OS | Package | Notes |
 | --- | --- | --- |
 | 🪟 **Windows** | `Typist-Setup-<version>.exe` | Unsigned: click **More info → Run anyway** on SmartScreen |
-| 🍎 **macOS** | `Typist-<version>.dmg` | Unsigned: right-click → **Open** the first time. Grant **Microphone** + **Accessibility** permissions |
+| 🍎 **macOS** | `Typist-<version>.dmg` | Unsigned — see the Gatekeeper note below ⬇️ |
 | 🐧 **Linux** | `Typist-<version>.AppImage` / `.deb` | One-time input permission step below ⬇️ |
+
+> **🍎 macOS: "Typist is damaged and can't be opened"**
+>
+> The app isn't damaged — macOS quarantines unsigned apps. After copying Typist
+> to **Applications**, run this once in Terminal:
+>
+> ```bash
+> xattr -cr /Applications/Typist.app
+> ```
+>
+> Then open it normally, and grant **Microphone** + **Accessibility** permissions when asked.
 
 ### 🐧 Linux: one-time input permission (required)
 

@@ -1,9 +1,8 @@
 import type { BrowserWindow } from 'electron';
 import type { AppState, StatePayload } from '../shared/types';
 import { getSettings } from './settings';
-import { transcribe } from './sarvam';
+import { transcribePcm } from './sarvam';
 import { isDownloaded, transcribeLocal } from './local-stt';
-import { pcmToWav } from './audio';
 import { pasteText } from './paste';
 
 interface Windows {
@@ -91,7 +90,7 @@ export async function onAudio(buffer: ArrayBuffer): Promise<void> {
     const transcript =
       provider === 'local'
         ? await transcribeLocal(localModel, pcm, language)
-        : await transcribe(apiKey, pcmToWav(pcm), language);
+        : await transcribePcm(apiKey, pcm, language);
     // Hide the overlay and give the WM a moment so keyboard focus returns to
     // the field the user was dictating into before we inject the text.
     wins.overlay()?.hide();

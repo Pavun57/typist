@@ -33,7 +33,8 @@ export function createSettingsWindow(): BrowserWindow {
     height: 780,
     autoHideMenuBar: true,
     show: false,
-    title: 'Typist Settings',
+    title: 'Typist',
+    icon: join(import.meta.dirname, '../../resources/icon.png'),
     webPreferences: baseWebPrefs,
   });
   win.once('ready-to-show', () => win.show());

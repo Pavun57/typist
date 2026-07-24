@@ -1,11 +1,13 @@
 import { app, BrowserWindow, Menu, nativeImage, session, Tray } from 'electron';
+import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import {
   createOverlayWindow,
   createRecorderWindow,
   createSettingsWindow,
   setQuitting,
 } from './windows';
-import { getSettings } from './settings';
+import { applyLaunchAtLogin, getSettings } from './settings';
 import { registerHotkey, unregisterHotkeys } from './hotkey';
 import { initController, toggleRecording } from './controller';
 import { registerIpc } from './ipc';
@@ -23,8 +25,12 @@ function openSettings(): void {
   settingsWin.focus();
 }
 
-/** 16x16 red-dot tray icon, generated in code so no asset files are needed. */
+/** Tray icon: the app mic logo (falls back to a generated red dot). */
 function trayIcon(): Electron.NativeImage {
+  const iconPath = join(app.getAppPath(), 'resources', 'icon.png');
+  if (existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath).resize({ width: 22, height: 22 });
+  }
   const size = 16;
   const radius = 6;
   const center = size / 2;
@@ -99,6 +105,8 @@ if (!gotLock) {
     });
 
     registerHotkey(getSettings().hotkey, toggleRecording);
+    // Re-apply the login-item preference (survives updates/reinstalls).
+    applyLaunchAtLogin(getSettings().launchAtLogin);
 
     tray = new Tray(trayIcon());
     tray.setToolTip('Typist — push-to-talk dictation');

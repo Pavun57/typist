@@ -1,6 +1,6 @@
 {
   "name": "typist",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Push-to-talk multilingual voice typing — cloud (Sarvam) or offline (local Whisper) speech-to-text",
   "author": {
     "name": "Pavun",
@@ -24,7 +24,8 @@
       "output": "dist"
     },
     "files": [
-      "out/**"
+      "out/**",
+      "resources/**"
     ],
     "linux": {
       "target": [
