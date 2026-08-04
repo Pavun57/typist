@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import { app } from 'electron';
 import { appendFileSync } from 'node:fs';
+import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppContext, AppState, StatePayload, VoiceAction } from '../shared/types';
 import { getSettings } from './settings';
@@ -10,7 +11,8 @@ import { resolveVoiceAction, solveWithVision } from './ai-cleanup';
 import { parseFallback, wantsScreen } from './commands';
 import { addMemory, findMemory, listMemories } from './memory';
 import { detectActiveApp } from './active-window';
-import { captureScreen } from './screen';
+import { captureScreenToFile } from './screen';
+import { detectAgentCli, solveWithAgentCli } from './agent-cli';
 import { copyToClipboard, pasteText, pressKeys } from './paste';
 
 /** Diagnostic trail for voice-action resolution — userData/debug.log. */
@@ -192,58 +194,91 @@ function formatForContext(text: string): string {
 
 /**
  * Screen-aware coding help ("solve this", "fix this error"): capture the
- * screen, ask a vision model, deliver the answer. Into terminals the answer
- * goes on the clipboard (typed newlines would execute partial input); into
- * editors it is typed directly. Returns true when the flow ran (even if it
- * errored); false means "fall back to normal dictation".
+ * screen and get an answer — preferring a locally installed coding agent
+ * (Claude Code / Codex CLI, which read the screenshot file themselves, no
+ * API key needed), falling back to the cloud vision model. Into terminals
+ * the answer goes on the clipboard (typed newlines would execute partial
+ * input); into editors it is typed directly. Returns true when the flow ran
+ * (even if it errored); false means "fall back to normal dictation".
  */
 async function tryScreenSolve(transcript: string): Promise<boolean> {
-  const { aiProvider, aiModel, groqApiKey, openrouterApiKey, nvidiaApiKey } =
+  const { aiProvider, aiModel, agentCli, groqApiKey, openrouterApiKey, nvidiaApiKey } =
     getSettings();
-  if (aiProvider === 'none') return false;
+  const agent = agentCli === 'cloud' ? null : detectAgentCli(agentCli);
   const aiKey =
     aiProvider === 'groq'
       ? groqApiKey
       : aiProvider === 'nvidia'
         ? nvidiaApiKey
         : openrouterApiKey;
-  if (!aiKey) return false;
+  const canCloud = aiProvider !== 'none' && !!aiKey;
+  if (!agent && !canCloud) return false;
 
-  setState('polishing');
-  const image = await captureScreen();
-  if (!image) {
+  const agentName =
+    agent?.cli === 'claude' ? 'Claude Code' : agent?.cli === 'codex' ? 'Codex' : null;
+  setState('polishing', agentName ? `Asking ${agentName}…` : undefined);
+  const shot = await captureScreenToFile();
+  if (!shot) {
     dbg('screen-solve: no working capture tool, falling back to text flow');
     return false;
   }
 
-  try {
-    const answer = await solveWithVision(aiProvider, aiKey, aiModel, transcript, image);
-    dbg(
-      `screen-solve transcript=${JSON.stringify(transcript)} bucket=${activeApp?.bucket ?? 'unknown'} answer=${JSON.stringify(answer.slice(0, 200))}`,
-    );
-    wins.overlay()?.hide();
-    await new Promise((r) => setTimeout(r, 300));
-    if (activeApp?.bucket === 'terminal') {
-      await copyToClipboard(answer);
-      try {
-        const tool = await pressKeys('ctrl+v');
-        dbg(`pasted answer via ${tool}`);
-        setState('done', 'Answer pasted.');
-      } catch {
-        setState('done', 'Answer copied — press Ctrl+V to paste it.');
-      }
-    } else {
-      await pasteText(answer);
-      setState('idle');
+  let answer: string | null = null;
+  let engine = '';
+  let solveError = '';
+
+  // 1. Local coding agent (Claude Code / Codex) — sees the file itself.
+  if (agent) {
+    try {
+      answer = await solveWithAgentCli(agent, transcript, shot);
+      engine = agent.cli;
+    } catch (err) {
+      solveError = err instanceof Error ? err.message : String(err);
+      dbg(`screen-solve: ${agent.cli} failed (${solveError.slice(0, 200)})`);
     }
-    return true;
-  } catch (err) {
+  }
+
+  // 2. Cloud vision fallback.
+  if (!answer && canCloud) {
+    try {
+      const image = await readFile(shot, 'base64');
+      answer = await solveWithVision(aiProvider, aiKey, aiModel, transcript, image);
+      engine = aiProvider;
+    } catch (err) {
+      solveError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  void unlink(shot).catch(() => {});
+
+  if (!answer) {
     setState(
       'error',
-      err instanceof Error ? err.message : 'Screen solve failed.',
+      solveError ||
+        'No coding assistant available — install Claude Code/Codex, or add an AI key in Settings.',
     );
     return true;
   }
+
+  dbg(
+    `screen-solve engine=${engine} transcript=${JSON.stringify(transcript)} bucket=${activeApp?.bucket ?? 'unknown'} answer=${JSON.stringify(answer.slice(0, 200))}`,
+  );
+  wins.overlay()?.hide();
+  await new Promise((r) => setTimeout(r, 300));
+  if (activeApp?.bucket === 'terminal') {
+    await copyToClipboard(answer);
+    try {
+      const tool = await pressKeys('ctrl+v');
+      dbg(`pasted answer via ${tool}`);
+      setState('done', 'Answer pasted.');
+    } catch {
+      setState('done', 'Answer copied — press Ctrl+V to paste it.');
+    }
+  } else {
+    await pasteText(answer);
+    setState('idle');
+  }
+  return true;
 }
 
 /** `buffer` is 16 kHz mono float32 PCM captured by the recorder window. */

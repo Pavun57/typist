@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AI_MODELS, LANGUAGES } from '../../shared/types';
 import type {
+  AgentCliPreference,
+  AgentStatus,
   AiProviderId,
   AppState,
   MemoryEntry,
@@ -66,9 +68,12 @@ export default function App() {
   const [aiModels, setAiModels] = useState<{ id: string; label: string }[]>([]);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [appState, setAppState] = useState<AppState>('idle');
+  const [agent, setAgent] = useState<AgentStatus | null>(null);
+  const [agentCli, setAgentCli] = useState<AgentCliPreference>('auto');
 
   const refreshStt = () => window.typist.getSttState().then(setStt);
   const refreshMemories = () => window.typist.getMemories().then(setMemories);
+  const refreshAgent = () => window.typist.getAgentStatus().then(setAgent);
 
   const loadAiModels = (provider: 'groq' | 'openrouter' | 'nvidia') => {
     window.typist
@@ -101,10 +106,12 @@ export default function App() {
       setOpenrouterApiKey(s.openrouterApiKey);
       setNvidiaApiKey(s.nvidiaApiKey);
       setTranslateToEnglish(s.translateToEnglish);
+      setAgentCli(s.agentCli);
       if (s.aiProvider !== 'none') loadAiModels(s.aiProvider);
     });
     void refreshStt();
     void refreshMemories();
+    void refreshAgent();
     const offProgress = window.typist.onDownloadProgress((p) => {
       setDownloading((d) => ({ ...d, [p.modelId]: p.percent }));
     });
@@ -130,6 +137,7 @@ export default function App() {
       launchAtLogin,
       aiProvider,
       aiModel,
+      agentCli,
       groqApiKey,
       openrouterApiKey,
       nvidiaApiKey,
@@ -417,6 +425,62 @@ export default function App() {
                 Translate everything to English
               </label>
             </div>
+          )}
+        </section>
+
+        <section className="section">
+          <div className="section-label">Screen coding help</div>
+          <span className="hint">
+            Say “solve this” or “fix this error” — Typist screenshots the active
+            window and asks a coding assistant for the answer.
+          </span>
+          <div className="choice-grid" style={{ marginTop: 10 }}>
+            {(
+              [
+                {
+                  id: 'auto',
+                  name: 'Auto',
+                  meta: 'Claude → Codex → cloud',
+                  available: true,
+                },
+                {
+                  id: 'claude',
+                  name: 'Claude Code',
+                  meta: agent?.claude.found ? 'Connected' : 'Not installed',
+                  badge: agent?.claude.found ? 'found' : undefined,
+                  available: agent?.claude.found ?? false,
+                },
+                {
+                  id: 'codex',
+                  name: 'Codex CLI',
+                  meta: agent?.codex.found ? 'Connected' : 'Not installed',
+                  badge: agent?.codex.found ? 'found' : undefined,
+                  available: agent?.codex.found ?? false,
+                },
+                {
+                  id: 'cloud',
+                  name: 'Cloud AI',
+                  meta: 'Uses the AI cleanup provider',
+                  available: true,
+                },
+              ] as { id: AgentCliPreference; name: string; meta: string; badge?: string; available: boolean }[]
+            ).map((c) => (
+              <div
+                key={c.id}
+                className={`choice${agentCli === c.id ? ' selected' : ''}${c.available ? '' : ' disabled'}`}
+                onClick={() => {
+                  if (c.available) setAgentCli(c.id);
+                }}
+              >
+                <div className="name">
+                  {c.name} {c.badge && <span className="badge">{c.badge}</span>}
+                </div>
+                <div className="meta">{c.meta}</div>
+              </div>
+            ))}
+          </div>
+          {agentCli !== 'cloud' && agent?.claude.found && (
+            <span className="hint mono-path">{agent.claude.path}</span>
           )}
         </section>
 

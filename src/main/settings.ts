@@ -2,7 +2,7 @@ import Store from 'electron-store';
 import { app, safeStorage } from 'electron';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { Settings, SttProviderId } from '../shared/types';
+import type { AgentCliPreference, Settings, SttProviderId } from '../shared/types';
 
 const DEFAULT_HOTKEY = 'CommandOrControl+Shift+Space';
 const DEFAULT_LOCAL_MODEL = 'onnx-community/whisper-base';
@@ -19,6 +19,7 @@ interface Schema {
   localModel: string;
   aiProvider: 'none' | 'groq' | 'openrouter' | 'nvidia';
   aiModel: string;
+  agentCli: AgentCliPreference;
   translateToEnglish: boolean;
 }
 
@@ -35,6 +36,7 @@ const store = new Store<Schema>({
     localModel: DEFAULT_LOCAL_MODEL,
     aiProvider: 'none',
     aiModel: '',
+    agentCli: 'auto',
     translateToEnglish: false,
   },
 });
@@ -104,6 +106,7 @@ export function getSettings(): Settings {
     localModel: store.get('localModel'),
     aiProvider: store.get('aiProvider'),
     aiModel: store.get('aiModel'),
+    agentCli: store.get('agentCli'),
     groqApiKey: decrypt(store.get('groqApiKeyEnc')),
     openrouterApiKey: decrypt(store.get('openrouterApiKeyEnc')),
     nvidiaApiKey: decrypt(store.get('nvidiaApiKeyEnc')),
@@ -125,6 +128,7 @@ export function setSettings(partial: Partial<Settings>): Settings {
   if (partial.localModel !== undefined) store.set('localModel', partial.localModel);
   if (partial.aiProvider !== undefined) store.set('aiProvider', partial.aiProvider);
   if (partial.aiModel !== undefined) store.set('aiModel', partial.aiModel);
+  if (partial.agentCli !== undefined) store.set('agentCli', partial.agentCli);
   if (partial.translateToEnglish !== undefined)
     store.set('translateToEnglish', partial.translateToEnglish);
   if (partial.launchAtLogin !== undefined) {

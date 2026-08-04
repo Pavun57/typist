@@ -1,5 +1,6 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import type {
+  AgentStatus,
   AiCloudProvider,
   DownloadProgress,
   MemoryEntry,
@@ -12,6 +13,7 @@ import { getSettings, setSettings } from './settings';
 import { validateApiKey } from './sarvam';
 import { registerHotkey } from './hotkey';
 import { clearMemories, deleteMemory, listMemories } from './memory';
+import { agentStatus } from './agent-cli';
 import {
   deleteModel,
   downloadModel,
@@ -126,6 +128,10 @@ export function registerIpc(getSettingsWin: () => BrowserWindow | null): void {
 
   ipcMain.handle('memory:clear', (): void => {
     clearMemories();
+  });
+
+  ipcMain.handle('agent:status', (): AgentStatus => {
+    return agentStatus(getSettings().agentCli);
   });
 
   ipcMain.on('recorder:audio', (_e, buffer: ArrayBuffer) => {

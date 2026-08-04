@@ -15,6 +15,15 @@ export type SttProviderId = 'sarvam' | 'local';
 
 export type AiProviderId = 'none' | 'groq' | 'openrouter' | 'nvidia';
 
+/** Coding assistant for screen-aware help. 'auto' = Claude → Codex → cloud. */
+export type AgentCliPreference = 'auto' | 'claude' | 'codex' | 'cloud';
+
+export interface AgentStatus {
+  claude: { found: boolean; path: string };
+  codex: { found: boolean; path: string };
+  preference: AgentCliPreference;
+}
+
 /** AI cleanup providers (excludes 'none'). */
 export type AiCloudProvider = Exclude<AiProviderId, 'none'>;
 
@@ -27,6 +36,7 @@ export interface Settings {
   localModel: string;
   aiProvider: AiProviderId;
   aiModel: string;
+  agentCli: AgentCliPreference;
   groqApiKey: string;
   openrouterApiKey: string;
   nvidiaApiKey: string;
@@ -187,4 +197,5 @@ export interface TypistApi {
   getMemories(): Promise<MemoryEntry[]>;
   deleteMemory(key: string): Promise<void>;
   clearMemories(): Promise<void>;
+  getAgentStatus(): Promise<AgentStatus>;
 }

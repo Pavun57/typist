@@ -48,6 +48,7 @@ const api: TypistApi = {
   getMemories: () => ipcRenderer.invoke('memory:list'),
   deleteMemory: (key: string) => ipcRenderer.invoke('memory:delete', key),
   clearMemories: () => ipcRenderer.invoke('memory:clear'),
+  getAgentStatus: () => ipcRenderer.invoke('agent:status'),
 };
 
 contextBridge.exposeInMainWorld('typist', api);

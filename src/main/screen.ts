@@ -1,14 +1,13 @@
 import { app } from 'electron';
 import { execFile } from 'node:child_process';
-import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 /**
  * Screen capture for screen-aware coding help ("solve this", "fix this
  * error"). Captures the ACTIVE window where possible (better context, less
- * privacy exposure), falling back to the full screen. Returns base64 PNG or
- * null — capture failure must never break dictation.
+ * privacy exposure), falling back to the full screen. Returns the PNG path —
+ * the caller owns deleting it. Never throws; capture failure returns null.
  */
 
 const BIN_DIRS = ['/usr/bin', '/usr/local/bin', '/bin', '/snap/bin'];
@@ -55,22 +54,18 @@ function captureCommands(dest: string): [string, string[]][] {
 }
 
 /**
- * Captures the screen to a PNG and returns it base64-encoded.
+ * Captures the screen to a PNG file and returns its path (caller deletes).
  * Never throws; returns null when no capture tool works.
  */
-export async function captureScreen(): Promise<string | null> {
+export async function captureScreenToFile(): Promise<string | null> {
   const dest = join(app.getPath('temp'), `typist-shot-${Date.now()}.png`);
   for (const [cmd, args] of captureCommands(dest)) {
     if (!has(cmd)) continue;
     try {
       await run(cmd, args);
-      if (!existsSync(dest)) continue;
-      const png = await readFile(dest);
-      return png.toString('base64');
+      if (existsSync(dest)) return dest;
     } catch {
       // try the next tool
-    } finally {
-      void unlink(dest).catch(() => {});
     }
   }
   return null;
