@@ -1,17 +1,21 @@
 :root {
-  --surface: rgba(28, 25, 23, 0.95); /* stone-900 */
-  --border: rgba(250, 250, 249, 0.12);
-  --text: #fafaf9;
-  --text-40: rgba(250, 250, 249, 0.4);
+  --surface: rgba(250, 249, 247, 0.98);
+  --border: rgba(28, 25, 23, 0.1);
+  --ink: #1c1917;
+  --ink-40: #a8a29e;
   --accent: #c8102e;
+  --ok: #16a34a;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
 }
 
 body {
-  margin: 0;
   background: transparent;
-  font-family:
-    'IBM Plex Sans', 'Hanken Grotesk', 'Barlow', 'Host Grotesk', 'DM Sans',
-    system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
   overflow: hidden;
   user-select: none;
 }
@@ -19,30 +23,36 @@ body {
 .pill {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
   height: 44px;
   margin: 16px;
-  padding: 0 16px;
-  border-radius: 22px;
+  padding: 0 18px;
+  border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 13px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
 
 .pill.recording {
   cursor: pointer;
 }
 
-.label {
-  letter-spacing: 0.02em;
+.cancel-hint {
+  color: var(--ink-40);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: auto;
 }
 
-.cancel-hint {
-  color: var(--text-40);
-  font-size: 11px;
-  margin-left: auto;
+.pill.error {
+  color: var(--accent);
+}
+
+.pill.done {
+  color: var(--ok);
 }
 
 /* ---- Listening: waveform bars ---- */
@@ -51,7 +61,7 @@ body {
   display: flex;
   align-items: center;
   gap: 3px;
-  height: 18px;
+  height: 16px;
   flex-shrink: 0;
 }
 
@@ -59,7 +69,7 @@ body {
   width: 3px;
   border-radius: 1px;
   background: var(--accent);
-  height: 6px;
+  height: 5px;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -86,20 +96,20 @@ body {
 @keyframes eq {
   0%,
   100% {
-    height: 5px;
+    height: 4px;
   }
   50% {
-    height: 18px;
+    height: 16px;
   }
 }
 
 /* ---- Transcribing: accent ring spinner ---- */
 
 .ring {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
-  border: 2px solid rgba(200, 16, 46, 0.25);
+  border: 2px solid rgba(200, 16, 46, 0.2);
   border-top-color: var(--accent);
   flex-shrink: 0;
 }
@@ -116,16 +126,29 @@ body {
   }
 }
 
-/* ---- Error ---- */
+/* ---- Polishing: sparkle ---- */
 
-.pill.error {
+.spark {
+  width: 14px;
+  height: 14px;
   color: var(--accent);
-  border-color: rgba(200, 16, 46, 0.4);
+  flex-shrink: 0;
 }
 
-/* ---- Done (command executed / memory saved) ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .spark {
+    animation: sparkle 1.2s ease-in-out infinite;
+  }
+}
 
-.pill.done {
-  color: #4ade80;
-  border-color: rgba(74, 222, 128, 0.4);
+@keyframes sparkle {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
 }

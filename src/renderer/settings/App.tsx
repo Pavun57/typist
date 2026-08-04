@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AI_MODELS, LANGUAGES } from '../../shared/types';
 import type {
   AiProviderId,
+  AppState,
   MemoryEntry,
   ModelInfo,
   Settings,
@@ -29,6 +30,16 @@ function acceleratorFromEvent(e: React.KeyboardEvent): string | null {
   return [...parts, normalized].join('+');
 }
 
+/** Status chip next to the wordmark, mirrors the controller state. */
+const CHIP_LABEL: Record<AppState, string> = {
+  idle: 'agent ready',
+  recording: 'listening',
+  transcribing: 'transcribing',
+  polishing: 'polishing',
+  done: 'done',
+  error: 'needs attention',
+};
+
 export default function App() {
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [stt, setStt] = useState<SttState | null>(null);
@@ -54,6 +65,7 @@ export default function App() {
   const [testingAi, setTestingAi] = useState(false);
   const [aiModels, setAiModels] = useState<{ id: string; label: string }[]>([]);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
+  const [appState, setAppState] = useState<AppState>('idle');
 
   const refreshStt = () => window.typist.getSttState().then(setStt);
   const refreshMemories = () => window.typist.getMemories().then(setMemories);
@@ -97,12 +109,14 @@ export default function App() {
       setDownloading((d) => ({ ...d, [p.modelId]: p.percent }));
     });
     const offUpdate = window.typist.onUpdateStatus(setUpdate);
+    const offState = window.typist.onStateChange((p) => setAppState(p.state));
     // Facts can be added by voice while this window is open.
     const onFocus = () => void refreshMemories();
     window.addEventListener('focus', onFocus);
     return () => {
       offProgress();
       offUpdate();
+      offState();
       window.removeEventListener('focus', onFocus);
     };
   }, []);
@@ -203,329 +217,341 @@ export default function App() {
     error: update.message ?? 'Update check failed.',
   };
 
+  const aiChoices: { id: AiProviderId; name: string; meta: string; badge?: string }[] = [
+    { id: 'none', name: 'Off', meta: 'Raw transcript' },
+    { id: 'groq', name: 'Groq', meta: 'Llama, Gemma', badge: 'free' },
+    { id: 'openrouter', name: 'OpenRouter', meta: 'Many models', badge: 'free' },
+    { id: 'nvidia', name: 'NVIDIA NIM', meta: 'Llama, Gemma', badge: 'free' },
+  ];
+
   return (
     <div className="app">
       <header className="brand">
-        <h1 className="wordmark">
-          Typist<span className="dot">.</span>
-        </h1>
-        <p className="tagline">Voice typing, anywhere</p>
-        <p className="subtitle">
-          Press <kbd>{hotkey}</kbd> anywhere to start dictating, press again to
-          stop — the transcript is typed where your cursor is.
-        </p>
+        <div>
+          <h1 className="wordmark">
+            Typist<span className="dot">.</span>
+          </h1>
+          <p className="tagline">Voice typing, anywhere</p>
+        </div>
+        <span className={`status-chip${appState !== 'idle' ? ' busy' : ''}`}>
+          <span className="pulse" />
+          {CHIP_LABEL[appState]}
+        </span>
       </header>
 
-      <div className="field">
-        <label>Speech-to-text engine</label>
-        <label className="checkbox">
-          <input
-            type="radio"
-            name="provider"
-            checked={stt.provider === 'sarvam'}
-            onChange={() => void pickProvider('sarvam')}
-          />
-          Sarvam AI (cloud, best for Indian languages)
-        </label>
-        <label className="checkbox">
-          <input
-            type="radio"
-            name="provider"
-            checked={stt.provider === 'local'}
-            onChange={() => void pickProvider('local')}
-          />
-          Local Whisper (offline, runs on this device)
-        </label>
-      </div>
+      <p className="subtitle">
+        Press <kbd>{hotkey}</kbd> anywhere to dictate. Say <em>“send this”</em> to
+        fire it off, or <em>“remember my address is…”</em> to teach me.
+      </p>
 
-      {stt.provider === 'sarvam' && (
-        <div className="field">
-          <label htmlFor="apikey">Sarvam API key</label>
-          <div className="row">
-            <input
-              id="apikey"
-              type="password"
-              style={{ flex: 1 }}
-              placeholder="api-subscription-key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-            <button className="secondary" onClick={testKey} disabled={testing}>
-              {testing ? 'Testing…' : 'Test key'}
-            </button>
-          </div>
-          <span className="hint">
-            Get a key at dashboard.sarvam.ai — it is stored encrypted on this device.
-          </span>
-          {keyStatus && (
-            <span className={`status ${keyStatus.ok ? 'ok' : 'err'}`}>
-              {keyStatus.message}
-            </span>
-          )}
-        </div>
-      )}
-
-      {stt.provider === 'local' && (
-        <div className="field">
-          <label>Local models</label>
-          <span className="hint">
-            Downloaded once, then work fully offline. The model loads when you dictate
-            and unloads automatically after 5 minutes idle.
-          </span>
-          {stt.models.map((m) => (
-            <div key={m.id} className={`model-card${m.active ? ' active' : ''}`}>
-              <div className="model-info">
-                <strong>{m.label}</strong>
-                <span className="hint">
-                  ~{m.sizeMB}&nbsp;MB · {m.note}
-                </span>
+      <div className="body">
+        <section className="section">
+          <div className="section-label">Speech engine</div>
+          <div className="choice-grid">
+            <div
+              className={`choice${stt.provider === 'sarvam' ? ' selected' : ''}`}
+              onClick={() => void pickProvider('sarvam')}
+            >
+              <div className="name">
+                Sarvam AI <span className="badge">cloud</span>
               </div>
-              {m.id in downloading ? (
-                <span className="percent">{downloading[m.id]}%</span>
-              ) : m.downloaded ? (
-                <div className="row">
-                  {m.active ? (
-                    <span className="status ok">Active</span>
-                  ) : (
-                    <button className="secondary" onClick={() => void pickModel(m.id)}>
-                      Use
-                    </button>
-                  )}
-                  <button className="secondary" onClick={() => void remove(m)}>
-                    Delete
-                  </button>
-                </div>
-              ) : (
-                <button className="secondary" onClick={() => void download(m)}>
-                  Download
+              <div className="meta">Best for Indian languages</div>
+            </div>
+            <div
+              className={`choice${stt.provider === 'local' ? ' selected' : ''}`}
+              onClick={() => void pickProvider('local')}
+            >
+              <div className="name">
+                Local Whisper <span className="badge">offline</span>
+              </div>
+              <div className="meta">Never leaves this device</div>
+            </div>
+          </div>
+
+          {stt.provider === 'sarvam' && (
+            <div style={{ marginTop: 12 }}>
+              <div className="row">
+                <input
+                  id="apikey"
+                  type="password"
+                  className="grow"
+                  placeholder="Sarvam API key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+                <button className="btn-ghost" onClick={testKey} disabled={testing}>
+                  {testing ? 'Testing…' : 'Test key'}
                 </button>
+              </div>
+              <span className="hint">
+                Get a key at dashboard.sarvam.ai — stored encrypted on this device.
+              </span>
+              {keyStatus && (
+                <span className={`status ${keyStatus.ok ? 'ok' : 'err'}`}>
+                  {keyStatus.message}
+                </span>
               )}
             </div>
-          ))}
-          {modelMsg && <span className="status">{modelMsg}</span>}
-        </div>
-      )}
+          )}
 
-      <div className="field">
-        <label>AI cleanup (optional)</label>
-        <span className="hint">
-          After transcription, an LLM detects intent: prompts meant for an AI
-          get enhanced, messages to people get grammar fixes only.
-        </span>
-        {(['none', 'groq', 'openrouter', 'nvidia'] as const).map((p) => (
-          <label className="checkbox" key={p}>
-            <input
-              type="radio"
-              name="aiProvider"
-              checked={aiProvider === p}
-              onChange={() => {
-                setAiProvider(p);
-                setAiKeyStatus(null);
-                if (p !== 'none') loadAiModels(p);
-              }}
-            />
-            {p === 'none'
-              ? 'Off'
-              : p === 'groq'
-                ? 'Groq (free tier)'
-                : p === 'openrouter'
-                  ? 'OpenRouter (free models)'
-                  : 'NVIDIA NIM (free tier)'}
-          </label>
-        ))}
-      </div>
-
-      {aiProvider !== 'none' && (
-        <>
-          <div className="field">
-            <label htmlFor="aikey">
-              {aiProvider === 'groq'
-                ? 'Groq'
-                : aiProvider === 'nvidia'
-                  ? 'NVIDIA'
-                  : 'OpenRouter'}{' '}
-              API key
-            </label>
-            <div className="row">
-              <input
-                id="aikey"
-                type="password"
-                style={{ flex: 1 }}
-                placeholder="API key"
-                value={aiKeyFor(aiProvider)}
-                onChange={(e) => setAiKeyFor(aiProvider, e.target.value)}
-              />
-              <button className="secondary" onClick={testAiKey} disabled={testingAi}>
-                {testingAi ? 'Testing…' : 'Test key'}
-              </button>
+          {stt.provider === 'local' && (
+            <div style={{ marginTop: 4 }}>
+              <span className="hint">
+                Downloaded once, then work fully offline. Models load when you
+                dictate and unload after 5 minutes idle.
+              </span>
+              {stt.models.map((m) => (
+                <div key={m.id} className={`card${m.active ? ' active' : ''}`}>
+                  <div className="info">
+                    <strong>{m.label}</strong>
+                    <span>
+                      ~{m.sizeMB}&nbsp;MB · {m.note}
+                    </span>
+                  </div>
+                  {m.id in downloading ? (
+                    <span className="percent">{downloading[m.id]}%</span>
+                  ) : m.downloaded ? (
+                    <div className="actions">
+                      {m.active ? (
+                        <span className="active-tag">Active</span>
+                      ) : (
+                        <button className="btn-ghost" onClick={() => void pickModel(m.id)}>
+                          Use
+                        </button>
+                      )}
+                      <button className="btn-ghost" onClick={() => void remove(m)}>
+                        Delete
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="actions">
+                      <button className="btn-ghost" onClick={() => void download(m)}>
+                        Download
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {modelMsg && <span className="status">{modelMsg}</span>}
             </div>
+          )}
+        </section>
+
+        <section className="section">
+          <div className="section-label">AI cleanup</div>
+          <div className="choice-grid">
+            {aiChoices.map((c) => (
+              <div
+                key={c.id}
+                className={`choice${aiProvider === c.id ? ' selected' : ''}`}
+                onClick={() => {
+                  setAiProvider(c.id);
+                  setAiKeyStatus(null);
+                  if (c.id !== 'none') loadAiModels(c.id);
+                }}
+              >
+                <div className="name">
+                  {c.name} {c.badge && <span className="badge">{c.badge}</span>}
+                </div>
+                <div className="meta">{c.meta}</div>
+              </div>
+            ))}
+          </div>
+          <span className="hint">
+            Detects intent: prompts get enhanced, messages get grammar fixes,
+            commands get executed.
+          </span>
+
+          {aiProvider !== 'none' && (
+            <div style={{ marginTop: 12 }}>
+              <div className="row">
+                <input
+                  id="aikey"
+                  type="password"
+                  className="grow"
+                  placeholder={`${aiProvider === 'groq' ? 'Groq' : aiProvider === 'nvidia' ? 'NVIDIA' : 'OpenRouter'} API key`}
+                  value={aiKeyFor(aiProvider)}
+                  onChange={(e) => setAiKeyFor(aiProvider, e.target.value)}
+                />
+                <button className="btn-ghost" onClick={testAiKey} disabled={testingAi}>
+                  {testingAi ? 'Testing…' : 'Test key'}
+                </button>
+              </div>
+              <span className="hint">
+                {aiProvider === 'groq'
+                  ? 'Free key at console.groq.com → API Keys.'
+                  : aiProvider === 'nvidia'
+                    ? 'Free key at build.nvidia.com → any model → Get API Key.'
+                    : 'Free key at openrouter.ai → Keys.'}
+              </span>
+              {aiKeyStatus && (
+                <span className={`status ${aiKeyStatus.ok ? 'ok' : 'err'}`}>
+                  {aiKeyStatus.message}
+                </span>
+              )}
+
+              <div style={{ marginTop: 10 }}>
+                <input
+                  id="aimodel"
+                  type="text"
+                  list="ai-models"
+                  placeholder="Model ID (empty = default)"
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                />
+                <datalist id="ai-models">
+                  {(aiModels.length > 0 ? aiModels : AI_MODELS[aiProvider]).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={translateToEnglish}
+                  onChange={(e) => setTranslateToEnglish(e.target.checked)}
+                />
+                Translate everything to English
+              </label>
+            </div>
+          )}
+        </section>
+
+        <section className="section">
+          <div className="section-label">Memory</div>
+          {memories.length === 0 ? (
             <span className="hint">
-              {aiProvider === 'groq'
-                ? 'Free key at console.groq.com → API Keys.'
-                : aiProvider === 'nvidia'
-                  ? 'Free key at build.nvidia.com → any model → Get API Key.'
-                  : 'Free key at openrouter.ai → Keys.'}
+              Nothing saved yet. Say “remember my address is …” while dictating,
+              then “type my address” to use it.
             </span>
-            {aiKeyStatus && (
-              <span className={`status ${aiKeyStatus.ok ? 'ok' : 'err'}`}>
-                {aiKeyStatus.message}
+          ) : (
+            <>
+              {memories.map((m) => (
+                <div key={m.key} className="card">
+                  <div className="info">
+                    <strong className="memory-key">{m.key}</strong>
+                    <span>{m.value}</span>
+                  </div>
+                  <div className="actions">
+                    <button
+                      className="btn-ghost"
+                      onClick={() =>
+                        void window.typist.deleteMemory(m.key).then(refreshMemories)
+                      }
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="row" style={{ marginTop: 8 }}>
+                <button
+                  className="btn-ghost"
+                  onClick={() =>
+                    void window.typist.clearMemories().then(refreshMemories)
+                  }
+                >
+                  Clear all
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="section">
+          <div className="section-label">Language</div>
+          <select
+            id="language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+          <span className="hint">Auto-detect works across all supported languages.</span>
+        </section>
+
+        <section className="section">
+          <div className="section-label">Hotkey</div>
+          <div className={`hotkey-box${capturing ? ' capturing' : ''}`}>
+            <input
+              id="hotkey"
+              type="text"
+              readOnly
+              value={capturing ? 'Press your shortcut…' : hotkey}
+              onFocus={() => setCapturing(true)}
+              onBlur={() => setCapturing(false)}
+              onKeyDown={onHotkeyKeyDown}
+            />
+            <span className="edit">{capturing ? 'listening…' : 'click to change'}</span>
+          </div>
+          {hotkeyStatus && (
+            <span className={`status ${hotkeyStatus.ok ? 'ok' : 'err'}`}>
+              {hotkeyStatus.message}
+            </span>
+          )}
+        </section>
+
+        <section className="section">
+          <div className="section-label">General</div>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={launchAtLogin}
+              onChange={(e) => setLaunchAtLogin(e.target.checked)}
+            />
+            Launch Typist at login
+          </label>
+        </section>
+
+        <section className="section">
+          <div className="section-label">Updates</div>
+          <div className="row">
+            <button className="btn-ghost" onClick={() => void window.typist.checkForUpdates()}>
+              Check for updates
+            </button>
+            {update.state === 'ready' && (
+              <button className="btn-primary" onClick={() => void window.typist.installUpdate()}>
+                Restart &amp; update
+              </button>
+            )}
+            {update.state === 'available' && update.message && (
+              <button className="btn-primary" onClick={() => void window.typist.installUpdate()}>
+                Update now
+              </button>
+            )}
+            {update.state !== 'idle' && update.state !== 'ready' && (
+              <span
+                className={`status ${update.state === 'error' ? 'err' : 'ok'}`}
+                style={{ margin: 0 }}
+              >
+                {updateText[update.state]}
               </span>
             )}
           </div>
+          {(update.state === 'ready' || (update.state === 'available' && update.message)) && (
+            <span className="status ok">{updateText[update.state]}</span>
+          )}
+        </section>
+      </div>
 
-          <div className="field">
-            <label htmlFor="aimodel">Model</label>
-            <input
-              id="aimodel"
-              type="text"
-              list="ai-models"
-              placeholder="Model ID"
-              value={aiModel}
-              onChange={(e) => setAiModel(e.target.value)}
-            />
-            <datalist id="ai-models">
-              {(aiModels.length > 0 ? aiModels : AI_MODELS[aiProvider]).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </datalist>
-            <span className="hint">
-              Models are fetched live from the provider — pick one or type any
-              model ID. Leave empty for the default.
-            </span>
-          </div>
-
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={translateToEnglish}
-              onChange={(e) => setTranslateToEnglish(e.target.checked)}
-            />
-            Translate to English — output fluent English (tone-matched messages,
-            structured prompts) instead of the spoken language
-          </label>
-        </>
-      )}
-
-      <div className="field">
-        <label>Memory</label>
-        <span className="hint">
-          Facts Typist remembers for you. While dictating, say "remember my
-          address is …" to save one, and "type my address" to use it.
+      <footer className="footer">
+        <span className="madeby">
+          Made by <strong>Pavun</strong>
         </span>
-        {memories.length === 0 ? (
-          <span className="hint">Nothing saved yet.</span>
-        ) : (
-          <>
-            {memories.map((m) => (
-              <div key={m.key} className="model-card">
-                <div className="model-info">
-                  <strong>{m.key}</strong>
-                  <span className="hint">{m.value}</span>
-                </div>
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    void window.typist.deleteMemory(m.key).then(refreshMemories)
-                  }
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-            <div className="row">
-              <button
-                className="secondary"
-                onClick={() =>
-                  void window.typist.clearMemories().then(refreshMemories)
-                }
-              >
-                Clear all
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="field">
-        <label htmlFor="language">Spoken language</label>
-        <select
-          id="language"
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.label}
-            </option>
-          ))}
-        </select>
-        <span className="hint">Auto-detect works across all supported languages.</span>
-      </div>
-
-      <div className="field">
-        <label htmlFor="hotkey">Hotkey</label>
-        <input
-          id="hotkey"
-          type="text"
-          readOnly
-          value={capturing ? 'Press your shortcut…' : hotkey}
-          onFocus={() => setCapturing(true)}
-          onBlur={() => setCapturing(false)}
-          onKeyDown={onHotkeyKeyDown}
-        />
-        <span className="hint">
-          Click the box and press the new shortcut (needs a modifier like Ctrl/Alt/Shift).
-        </span>
-        {hotkeyStatus && (
-          <span className={`status ${hotkeyStatus.ok ? 'ok' : 'err'}`}>
-            {hotkeyStatus.message}
-          </span>
-        )}
-      </div>
-
-      <label className="checkbox">
-        <input
-          type="checkbox"
-          checked={launchAtLogin}
-          onChange={(e) => setLaunchAtLogin(e.target.checked)}
-        />
-        Launch Typist at login
-      </label>
-
-      <div className="field">
-        <label>Updates</label>
-        <div className="row">
-          <button className="secondary" onClick={() => void window.typist.checkForUpdates()}>
-            Check for updates
+        <div className="save-area">
+          {saved && <span className="status ok">Saved.</span>}
+          <button className="btn-primary" onClick={save}>
+            Save
           </button>
-          {update.state === 'ready' && (
-            <button onClick={() => void window.typist.installUpdate()}>
-              Restart &amp; update
-            </button>
-          )}
-          {update.state === 'available' && update.message && (
-            <button onClick={() => void window.typist.installUpdate()}>
-              Update now
-            </button>
-          )}
         </div>
-        {update.state !== 'idle' && (
-          <span className={`status ${update.state === 'error' ? 'err' : ''}`}>
-            {updateText[update.state]}
-          </span>
-        )}
-      </div>
-
-      <div className="footer">
-        {saved && <span className="status ok">Saved.</span>}
-        <button onClick={save}>Save</button>
-      </div>
-
-      <div className="madeby">
-        Made by <strong>Pavun</strong>
-      </div>
+      </footer>
     </div>
   );
 }

@@ -86,7 +86,8 @@ async function detectWindows(): Promise<{ app: string; title: string } | null> {
 const BUCKET_RULES: [AppBucket, RegExp][] = [
   ['email', /mail|gmail|outlook|thunderbird|mailspring|geary|evolution/i],
   ['chat', /whatsapp|telegram|slack|discord|signal|element|teams|messages|chat/i],
-  ['code', /code|cursor|vim|neovim|emacs|idea|pycharm|webstorm|fleet|sublime|zed|studio|terminal|konsole|alacritty|kitty|wezterm|gnome-terminal|iterm|warp/i],
+  ['terminal', /claude|codex|konsole|alacritty|kitty|wezterm|gnome-terminal|gnome-console|kgx|iterm|warp|terminator|tilix|xterm|terminal|shell|zsh|bash|powershell|cmd\.exe|windows terminal/i],
+  ['code', /code|cursor|vim|neovim|emacs|idea|pycharm|webstorm|fleet|sublime|zed|studio|kate|kwrite|gedit|notepad/i],
   ['document', /libreoffice|writer|notion|obsidian|figma|docs|word|pages|notes/i],
   ['browser', /chrome|firefox|edge|brave|safari|vivaldi|opera|arc|zen/i],
 ];

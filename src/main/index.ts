@@ -12,6 +12,7 @@ import { registerHotkey, unregisterHotkeys } from './hotkey';
 import { initController, toggleRecording } from './controller';
 import { registerIpc } from './ipc';
 import { checkForUpdates, initUpdater } from './updater';
+import { ensureTypingTools } from './paste';
 
 let settingsWin: BrowserWindow | null = null;
 let overlayWin: BrowserWindow | null = null;
@@ -107,6 +108,8 @@ if (!gotLock) {
     registerHotkey(getSettings().hotkey, toggleRecording);
     // Re-apply the login-item preference (survives updates/reinstalls).
     applyLaunchAtLogin(getSettings().launchAtLogin);
+    // Start ydotoold on Wayland if it's installed but not running.
+    ensureTypingTools();
 
     tray = new Tray(trayIcon());
     tray.setToolTip('Typist — push-to-talk dictation');

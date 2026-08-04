@@ -22,13 +22,24 @@ const COMMAND_RULES: [RegExp, string][] = [
 
 /** Trailing commands: typed text followed by a key. Longest match first. */
 const TRAILING_RULES: [RegExp, 'enter' | 'tab' | 'escape'][] = [
-  [/[,.\s]*(send (this|it|that|the message)|hit send|hit enter|press enter)\s*[.!?]*$/i, 'enter'],
+  [/[,.\s]*((send|enter|submit) (this|it|that|the message)|hit send|hit enter|press enter)\s*[.!?]*$/i, 'enter'],
   [/[,.\s]*(new line|newline|line break)\s*[.!?]*$/i, 'enter'],
   [/[,.\s]*(press |hit )?tab\s*[.!?]*$/i, 'tab'],
 ];
 
 const REMEMBER_RE =
   /^remember\s+(?:that\s+)?(?:my\s+)?(.+?)\s+is\s+(.+)$/i;
+
+/**
+ * Explicit requests for screen-aware help — only these trigger a screenshot
+ * (privacy: the screen is never captured on plain dictation).
+ */
+const SCREEN_RE =
+  /\b(solve this|fix this|debug this|explain this|what('s| is) (wrong|the error)|this error|this bug|write (the )?code|code (this|it)|on (my|the) screen)\b/i;
+
+export function wantsScreen(transcript: string): boolean {
+  return SCREEN_RE.test(transcript);
+}
 
 /** "my <key>" references that match a saved memory. */
 function substituteMemories(

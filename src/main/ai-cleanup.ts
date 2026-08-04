@@ -35,7 +35,8 @@ Step 3 — respond with a SINGLE JSON object, no other text:
 - Save a fact ("remember my X is Y" / "note that my X is Y"): {"action":"remember","key":"<short label>","value":"<the fact>"}
 
 Output rules:
-- Output ONLY the JSON object. NO markdown fences, NO replies, NO questions, NO explanations, NO labels.
+- Output ONLY the JSON object. The FIRST character of your reply must be { and the last must be }.
+- NO markdown fences, NO replies, NO questions, NO explanations, NO labels.
 - Never describe what you did (no "I have identified…", "Here is the rewritten text…").
 - Never acknowledge the text (no "I understand", "Sure", "Here is...").`;
 
@@ -118,7 +119,9 @@ const CONTEXT_GUIDANCE: Record<string, string> = {
   chat:
     'The user is dictating into a chat app. Keep it a single casual line — no greeting, no sign-off, no formal restructuring.',
   code:
-    'The user is dictating into a code editor or terminal. Output the text literally — no added formatting, politeness, or restructuring.',
+    'The user is dictating into a code editor. Output the text literally — no added formatting, politeness, or restructuring.',
+  terminal:
+    'The user is dictating into a terminal or a coding-agent CLI (Claude Code, Codex, etc.). Output a single line, literal — newlines would execute partial input.',
   document:
     'The user is dictating into a document/notes app. Paragraph breaks are fine where the speaker clearly moves to a new thought.',
   browser:
@@ -266,6 +269,10 @@ function parseAction(raw: string, fallbackText: string): VoiceAction {
     }
   }
   // The model ignored the JSON contract — treat output as rewritten text.
+  console.warn(
+    '[typist] AI returned non-JSON output, using it as plain text:',
+    raw.slice(0, 120),
+  );
   return { kind: 'type', text: sanitizeOutput(raw, fallbackText) };
 }
 
@@ -332,4 +339,82 @@ export async function resolveVoiceAction(
   // Never return empty — fall back to the raw transcript.
   if (!cleaned) return { kind: 'type', text };
   return parseAction(cleaned, text);
+}
+
+// ---------------------------------------------------------------------------
+// Screen-aware coding help ("solve this", "fix this error"): the screenshot
+// plus the dictated question go to a vision-capable model, and the answer is
+// typed (or copied) at the cursor.
+// ---------------------------------------------------------------------------
+
+/** Vision-capable defaults per provider; the user's aiModel wins if set. */
+const VISION_MODEL: Record<AiCloudProvider, string> = {
+  groq: 'meta-llama/llama-4-scout-17b-16e-instruct',
+  openrouter: 'google/gemma-3-27b-it:free',
+  nvidia: 'meta/llama-3.2-90b-vision-instruct',
+};
+
+const VISION_PROMPT = `You are a senior engineer pair-programming with the user.
+The image is a screenshot of the user's screen (usually an error, a bug, or a coding problem).
+The dictated text is their request about it.
+
+Rules:
+- Solve the actual problem visible on the screen.
+- If the answer is code, output ONLY the code, ready to paste — no markdown fences, no explanation, unless the user asked for an explanation.
+- If the answer is a diagnosis or instruction, be brief and concrete (2-4 sentences).
+- Never describe the screenshot back ("I can see your screen shows…").`;
+
+export async function solveWithVision(
+  provider: AiCloudProvider,
+  apiKey: string,
+  model: string,
+  text: string,
+  imageBase64: string,
+): Promise<string> {
+  // The user's cleanup model is usually text-only (e.g. llama-3.1-8b) — only
+  // honor it when it looks vision-capable, else use the provider default.
+  const visionCapable =
+    /vision|scout|maverick|gemma-3|gpt-4o|gpt-5|claude|-vl\b|vl-/i.test(model);
+  const res = await fetch(ENDPOINTS[provider], {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: visionCapable ? model : VISION_MODEL[provider],
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: VISION_PROMPT },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:image/png;base64,${imageBase64}` },
+            },
+            { type: 'text', text: `My request: ${text}` },
+          ],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(`Invalid ${provider} API key.`);
+  }
+  if (res.status === 429) {
+    throw new Error(`${provider} rate limit hit — try again shortly.`);
+  }
+  if (!res.ok) {
+    throw new Error(`Vision request failed (HTTP ${res.status}).`);
+  }
+
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const answer = data.choices?.[0]?.message?.content?.trim();
+  if (!answer) throw new Error('The model returned an empty answer.');
+  return answer;
 }

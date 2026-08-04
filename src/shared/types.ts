@@ -116,6 +116,7 @@ export type AppBucket =
   | 'email'
   | 'chat'
   | 'code'
+  | 'terminal'
   | 'document'
   | 'browser'
   | 'unknown';

@@ -1,13 +1,29 @@
 import type { BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { AppContext, AppState, StatePayload, VoiceAction } from '../shared/types';
 import { getSettings } from './settings';
 import { transcribePcm } from './sarvam';
 import { isDownloaded, transcribeLocal } from './local-stt';
-import { resolveVoiceAction } from './ai-cleanup';
-import { parseFallback } from './commands';
+import { resolveVoiceAction, solveWithVision } from './ai-cleanup';
+import { parseFallback, wantsScreen } from './commands';
 import { addMemory, findMemory, listMemories } from './memory';
 import { detectActiveApp } from './active-window';
-import { pasteText, pressKeys } from './paste';
+import { captureScreen } from './screen';
+import { copyToClipboard, pasteText, pressKeys } from './paste';
+
+/** Diagnostic trail for voice-action resolution — userData/debug.log. */
+function dbg(message: string): void {
+  try {
+    appendFileSync(
+      join(app.getPath('userData'), 'debug.log'),
+      `[${new Date().toISOString()}] ${message}\n`,
+    );
+  } catch {
+    // logging must never break dictation
+  }
+}
 
 interface Windows {
   overlay: () => BrowserWindow | null;
@@ -93,19 +109,31 @@ export function cancelRecording(): void {
 }
 
 /**
- * Resolves the transcript into a VoiceAction: the AI pass when a provider is
- * configured (with app context + memories for formatting and substitution),
- * otherwise the offline regex parser. Fail-open: an AI error falls back to
- * the raw transcript, and the error is surfaced.
+ * Resolves the transcript into a VoiceAction.
+ *
+ * Commands and memory are deterministic — the regex parser runs FIRST and
+ * short-circuits remember/recall/pure-command intents, so they work the same
+ * on every AI model (small free-tier models can't be trusted to emit the JSON
+ * action contract). The AI pass only polishes the *text* of a type action;
+ * a trailing command it strips ("send this") is re-attached afterwards.
+ * Fail-open: an AI error falls back to the raw transcript, surfaced as an error.
  */
 async function resolveAction(
   transcript: string,
 ): Promise<{ action: VoiceAction; cleanupError: string }> {
+  const memories = listMemories();
+  const parsed = parseFallback(transcript, memories);
+
+  // Deterministic intents never need the AI pass.
+  if (parsed.kind !== 'type') {
+    return { action: parsed, cleanupError: '' };
+  }
+
   const { aiProvider, aiModel, groqApiKey, openrouterApiKey, nvidiaApiKey, translateToEnglish } =
     getSettings();
 
   if (aiProvider === 'none') {
-    return { action: parseFallback(transcript, listMemories()), cleanupError: '' };
+    return { action: parsed, cleanupError: '' };
   }
 
   const aiKey =
@@ -118,37 +146,104 @@ async function resolveAction(
     const name =
       aiProvider === 'groq' ? 'Groq' : aiProvider === 'nvidia' ? 'NVIDIA' : 'OpenRouter';
     return {
-      action: parseFallback(transcript, listMemories()),
+      action: parsed,
       cleanupError: `Add your ${name} API key in Settings — used raw transcript.`,
     };
   }
 
   setState('polishing');
   try {
-    const action = await resolveVoiceAction(aiProvider, aiKey, aiModel, transcript, {
+    // parsed.text has any trailing command phrase already stripped.
+    const action = await resolveVoiceAction(aiProvider, aiKey, aiModel, parsed.text, {
       translateToEnglish,
       context: activeApp,
-      memories: listMemories(),
+      memories,
     });
+    // The regex already decided this dictation ends with a key press — the AI
+    // must not talk us out of it.
+    if (action.kind === 'type' && parsed.then && !action.then) {
+      action.then = parsed.then;
+    }
     return { action, cleanupError: '' };
   } catch (err) {
     return {
-      action: { kind: 'type', text: transcript },
+      action: { kind: 'type', text: parsed.text, then: parsed.then },
       cleanupError: err instanceof Error ? err.message : 'AI cleanup failed.',
     };
   }
 }
 
 /**
- * Newlines survive only in email/document apps, where paragraphs are wanted.
- * Everywhere else the transcript is flattened — a newline would be typed as
- * Enter, which sends half-finished messages in chat apps.
+ * Newlines survive only in email/document/code apps, where paragraphs are
+ * wanted. Everywhere else the transcript is flattened — a newline would be
+ * typed as Enter, which sends half-finished messages in chat apps and
+ * executes partial input in terminals.
  */
 function formatForContext(text: string): string {
-  if (activeApp?.bucket === 'email' || activeApp?.bucket === 'document') {
+  if (
+    activeApp?.bucket === 'email' ||
+    activeApp?.bucket === 'document' ||
+    activeApp?.bucket === 'code'
+  ) {
     return text.replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   }
   return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Screen-aware coding help ("solve this", "fix this error"): capture the
+ * screen, ask a vision model, deliver the answer. Into terminals the answer
+ * goes on the clipboard (typed newlines would execute partial input); into
+ * editors it is typed directly. Returns true when the flow ran (even if it
+ * errored); false means "fall back to normal dictation".
+ */
+async function tryScreenSolve(transcript: string): Promise<boolean> {
+  const { aiProvider, aiModel, groqApiKey, openrouterApiKey, nvidiaApiKey } =
+    getSettings();
+  if (aiProvider === 'none') return false;
+  const aiKey =
+    aiProvider === 'groq'
+      ? groqApiKey
+      : aiProvider === 'nvidia'
+        ? nvidiaApiKey
+        : openrouterApiKey;
+  if (!aiKey) return false;
+
+  setState('polishing');
+  const image = await captureScreen();
+  if (!image) {
+    dbg('screen-solve: no working capture tool, falling back to text flow');
+    return false;
+  }
+
+  try {
+    const answer = await solveWithVision(aiProvider, aiKey, aiModel, transcript, image);
+    dbg(
+      `screen-solve transcript=${JSON.stringify(transcript)} bucket=${activeApp?.bucket ?? 'unknown'} answer=${JSON.stringify(answer.slice(0, 200))}`,
+    );
+    wins.overlay()?.hide();
+    await new Promise((r) => setTimeout(r, 300));
+    if (activeApp?.bucket === 'terminal') {
+      await copyToClipboard(answer);
+      try {
+        const tool = await pressKeys('ctrl+v');
+        dbg(`pasted answer via ${tool}`);
+        setState('done', 'Answer pasted.');
+      } catch {
+        setState('done', 'Answer copied — press Ctrl+V to paste it.');
+      }
+    } else {
+      await pasteText(answer);
+      setState('idle');
+    }
+    return true;
+  } catch (err) {
+    setState(
+      'error',
+      err instanceof Error ? err.message : 'Screen solve failed.',
+    );
+    return true;
+  }
 }
 
 /** `buffer` is 16 kHz mono float32 PCM captured by the recorder window. */
@@ -162,7 +257,12 @@ export async function onAudio(buffer: ArrayBuffer): Promise<void> {
         ? await transcribeLocal(localModel, pcm, language)
         : await transcribePcm(apiKey, pcm, language);
 
+    // Explicit screen-help requests ("solve this", "fix this error") take a
+    // screenshot and go to a vision model instead of the normal flow.
+    if (wantsScreen(transcript) && (await tryScreenSolve(transcript))) return;
+
     const { action, cleanupError } = await resolveAction(transcript);
+    dbg(`transcript=${JSON.stringify(transcript)} action=${JSON.stringify(action)}`);
 
     // Hide the overlay and give the WM a moment so keyboard focus returns to
     // the field the user was dictating into before we inject anything.
@@ -170,12 +270,21 @@ export async function onAudio(buffer: ArrayBuffer): Promise<void> {
     await new Promise((r) => setTimeout(r, 300));
 
     switch (action.kind) {
-      case 'type':
-        await pasteText(formatForContext(action.text), action.then);
+      case 'type': {
+        await pasteText(formatForContext(action.text));
+        if (action.then) {
+          // Let the target app settle after the text lands before the keypress.
+          await new Promise((r) => setTimeout(r, 100));
+          const tool = await pressKeys(action.then);
+          dbg(`pressed ${action.then} via ${tool}`);
+        }
         break;
-      case 'command':
-        await pressKeys(action.keys);
+      }
+      case 'command': {
+        const tool = await pressKeys(action.keys);
+        dbg(`pressed ${action.keys} via ${tool}`);
         break;
+      }
       case 'remember':
         addMemory(action.key, action.value);
         break;
