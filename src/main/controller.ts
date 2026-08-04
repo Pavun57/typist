@@ -1,10 +1,13 @@
 import type { BrowserWindow } from 'electron';
-import type { AppState, StatePayload } from '../shared/types';
+import type { AppContext, AppState, StatePayload, VoiceAction } from '../shared/types';
 import { getSettings } from './settings';
 import { transcribePcm } from './sarvam';
 import { isDownloaded, transcribeLocal } from './local-stt';
-import { cleanupText } from './ai-cleanup';
-import { pasteText } from './paste';
+import { resolveVoiceAction } from './ai-cleanup';
+import { parseFallback } from './commands';
+import { addMemory, findMemory, listMemories } from './memory';
+import { detectActiveApp } from './active-window';
+import { pasteText, pressKeys } from './paste';
 
 interface Windows {
   overlay: () => BrowserWindow | null;
@@ -16,6 +19,8 @@ interface Windows {
 let state: AppState = 'idle';
 let errorTimer: NodeJS.Timeout | null = null;
 let wins: Windows;
+/** Focused app captured when the hotkey was pressed (before transcription). */
+let activeApp: AppContext | null = null;
 
 function broadcast(payload: StatePayload): void {
   for (const get of [wins.overlay, wins.settings]) {
@@ -38,8 +43,8 @@ export function setState(next: AppState, message?: string): void {
     overlay?.hide();
   } else {
     if (overlay && !overlay.isVisible()) overlay.showInactive();
-    if (next === 'error') {
-      // Auto-recover to idle after showing the error briefly.
+    if (next === 'error' || next === 'done') {
+      // Auto-recover to idle after showing the result briefly.
       errorTimer = setTimeout(() => setState('idle'), 3000);
     }
   }
@@ -58,6 +63,11 @@ function startRecording(): void {
     wins.openSettings();
     return;
   }
+  // Capture the dictation target now, while it still has focus. Never throws.
+  activeApp = null;
+  void detectActiveApp().then((app) => {
+    activeApp = app;
+  });
   wins.recorder()?.webContents.send('recorder:command', 'start');
   setState('recording');
 }
@@ -71,7 +81,7 @@ function stopRecording(): void {
 export function toggleRecording(): void {
   if (state === 'recording') {
     stopRecording();
-  } else if (state === 'idle' || state === 'error') {
+  } else if (state === 'idle' || state === 'error' || state === 'done') {
     startRecording();
   }
 }
@@ -82,64 +92,114 @@ export function cancelRecording(): void {
   setState('idle');
 }
 
+/**
+ * Resolves the transcript into a VoiceAction: the AI pass when a provider is
+ * configured (with app context + memories for formatting and substitution),
+ * otherwise the offline regex parser. Fail-open: an AI error falls back to
+ * the raw transcript, and the error is surfaced.
+ */
+async function resolveAction(
+  transcript: string,
+): Promise<{ action: VoiceAction; cleanupError: string }> {
+  const { aiProvider, aiModel, groqApiKey, openrouterApiKey, nvidiaApiKey, translateToEnglish } =
+    getSettings();
+
+  if (aiProvider === 'none') {
+    return { action: parseFallback(transcript, listMemories()), cleanupError: '' };
+  }
+
+  const aiKey =
+    aiProvider === 'groq'
+      ? groqApiKey
+      : aiProvider === 'nvidia'
+        ? nvidiaApiKey
+        : openrouterApiKey;
+  if (!aiKey) {
+    const name =
+      aiProvider === 'groq' ? 'Groq' : aiProvider === 'nvidia' ? 'NVIDIA' : 'OpenRouter';
+    return {
+      action: parseFallback(transcript, listMemories()),
+      cleanupError: `Add your ${name} API key in Settings — used raw transcript.`,
+    };
+  }
+
+  setState('polishing');
+  try {
+    const action = await resolveVoiceAction(aiProvider, aiKey, aiModel, transcript, {
+      translateToEnglish,
+      context: activeApp,
+      memories: listMemories(),
+    });
+    return { action, cleanupError: '' };
+  } catch (err) {
+    return {
+      action: { kind: 'type', text: transcript },
+      cleanupError: err instanceof Error ? err.message : 'AI cleanup failed.',
+    };
+  }
+}
+
+/**
+ * Newlines survive only in email/document apps, where paragraphs are wanted.
+ * Everywhere else the transcript is flattened — a newline would be typed as
+ * Enter, which sends half-finished messages in chat apps.
+ */
+function formatForContext(text: string): string {
+  if (activeApp?.bucket === 'email' || activeApp?.bucket === 'document') {
+    return text.replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 /** `buffer` is 16 kHz mono float32 PCM captured by the recorder window. */
 export async function onAudio(buffer: ArrayBuffer): Promise<void> {
   if (state !== 'transcribing') return; // stale audio after a cancel
   try {
     const { provider, apiKey, localModel, language } = getSettings();
     const pcm = new Float32Array(buffer);
-    let transcript =
+    const transcript =
       provider === 'local'
         ? await transcribeLocal(localModel, pcm, language)
         : await transcribePcm(apiKey, pcm, language);
 
-    // Optional AI cleanup: enhance prompts, grammar-fix messages. Fail-open —
-    // a cleanup error never loses the transcript, but it is surfaced.
-    const { aiProvider, aiModel, groqApiKey, openrouterApiKey, nvidiaApiKey, translateToEnglish } =
-      getSettings();
-    let cleanupError = '';
-    if (aiProvider !== 'none') {
-      const aiKey =
-        aiProvider === 'groq'
-          ? groqApiKey
-          : aiProvider === 'nvidia'
-            ? nvidiaApiKey
-            : openrouterApiKey;
-      if (aiKey) {
-        setState('polishing');
-        try {
-          transcript = await cleanupText(
-            aiProvider,
-            aiKey,
-            aiModel,
-            transcript,
-            translateToEnglish,
-          );
-        } catch (err) {
-          cleanupError = err instanceof Error ? err.message : 'AI cleanup failed.';
+    const { action, cleanupError } = await resolveAction(transcript);
+
+    // Hide the overlay and give the WM a moment so keyboard focus returns to
+    // the field the user was dictating into before we inject anything.
+    wins.overlay()?.hide();
+    await new Promise((r) => setTimeout(r, 300));
+
+    switch (action.kind) {
+      case 'type':
+        await pasteText(formatForContext(action.text), action.then);
+        break;
+      case 'command':
+        await pressKeys(action.keys);
+        break;
+      case 'remember':
+        addMemory(action.key, action.value);
+        break;
+      case 'recall': {
+        const memory = findMemory(action.key);
+        if (!memory) {
+          setState('error', `No memory saved for "${action.key}".`);
+          return;
         }
-      } else {
-        const name =
-          aiProvider === 'groq'
-            ? 'Groq'
-            : aiProvider === 'nvidia'
-              ? 'NVIDIA'
-              : 'OpenRouter';
-        cleanupError = `Add your ${name} API key in Settings — used raw transcript.`;
+        await pasteText(memory.value);
+        break;
       }
     }
 
-    // Single-line output: newlines in the transcript would be typed as
-    // Enter, which sends half-finished messages in chat apps.
-    transcript = transcript.replace(/\s+/g, ' ').trim();
-
-    // Hide the overlay and give the WM a moment so keyboard focus returns to
-    // the field the user was dictating into before we inject the text.
-    wins.overlay()?.hide();
-    await new Promise((r) => setTimeout(r, 300));
-    await pasteText(transcript);
+    const doneMessage =
+      action.kind === 'remember'
+        ? `Remembered: ${action.key}`
+        : action.kind === 'command'
+          ? 'Done.'
+          : undefined;
     if (cleanupError) {
       setState('error', `${cleanupError} (raw transcript was used)`);
+    } else if (doneMessage) {
+      setState('done', doneMessage);
     } else {
       setState('idle');
     }

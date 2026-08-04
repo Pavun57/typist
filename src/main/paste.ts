@@ -122,17 +122,153 @@ async function nutJsPasteKeystroke(): Promise<void> {
   await keyboard.releaseKey(mod);
 }
 
+// ---------------------------------------------------------------------------
+// Key presses for voice commands ("send this" → Enter, "undo that" → Ctrl+Z).
+// Combos are xdotool-style: 'enter', 'ctrl+z', 'ctrl+shift+z', 'backspace'.
+// ---------------------------------------------------------------------------
+
+interface Combo {
+  mods: string[]; // 'ctrl' | 'shift' | 'alt'
+  key: string; // normalized: 'enter' | 'tab' | 'escape' | 'backspace' | letter
+}
+
+const KEY_ALIASES: Record<string, string> = {
+  return: 'enter',
+  esc: 'escape',
+  delete: 'backspace',
+  del: 'backspace',
+  space: 'space',
+};
+
+function parseCombo(combo: string): Combo | null {
+  const parts = combo.toLowerCase().split('+').map((p) => p.trim());
+  const key = KEY_ALIASES[parts[parts.length - 1]] ?? parts[parts.length - 1];
+  const mods = parts.slice(0, -1).filter((m) => ['ctrl', 'shift', 'alt'].includes(m));
+  if (!key || !/^[a-z0-9]+$/.test(key)) return null;
+  return { mods, key };
+}
+
+/** xkbcommon keysym names for wtype / xdotool. */
+const XKB_KEY: Record<string, string> = {
+  enter: 'Return',
+  tab: 'Tab',
+  escape: 'Escape',
+  backspace: 'BackSpace',
+  space: 'space',
+};
+
+/** Linux input-event scan codes for ydotool. */
+const SCAN_CODE: Record<string, number> = {
+  enter: 28,
+  tab: 15,
+  escape: 1,
+  backspace: 14,
+  space: 57,
+  a: 30, c: 46, v: 47, x: 45, z: 44, y: 21,
+};
+const MOD_SCAN_CODE: Record<string, number> = { ctrl: 29, shift: 42, alt: 56 };
+
+function wtypeArgs(c: Combo): string[] {
+  const args: string[] = [];
+  for (const m of c.mods) args.push('-M', m);
+  args.push('-k', XKB_KEY[c.key] ?? c.key);
+  for (const m of [...c.mods].reverse()) args.push('-m', m);
+  return args;
+}
+
+function ydotoolArgs(c: Combo): string[] {
+  const seq: string[] = [];
+  for (const m of c.mods) seq.push(`${MOD_SCAN_CODE[m]}:1`);
+  const code = SCAN_CODE[c.key];
+  if (code === undefined) return [];
+  seq.push(`${code}:1`, `${code}:0`);
+  for (const m of [...c.mods].reverse()) seq.push(`${MOD_SCAN_CODE[m]}:0`);
+  return ['key', ...seq];
+}
+
+function xdotoolCombo(c: Combo): string {
+  const key = XKB_KEY[c.key] ?? c.key;
+  return [...c.mods, key].join('+');
+}
+
+async function linuxPressKeys(c: Combo): Promise<boolean> {
+  const attempts: [string, string[]][] = [
+    ['wtype', wtypeArgs(c)],
+    ['ydotool', ydotoolArgs(c)],
+    ['xdotool', ['key', xdotoolCombo(c)]],
+  ];
+  const ordered = isWayland() ? attempts : [attempts[2], attempts[1], attempts[0]];
+  for (const [cmd, args] of ordered) {
+    if (args.length === 0 || !(await isInstalled(cmd))) continue;
+    try {
+      await run(cmd, args);
+      return true;
+    } catch {
+      // tool present but failed — try the next one
+    }
+  }
+  return false;
+}
+
+async function nutJsPressKeys(c: Combo): Promise<void> {
+  const { keyboard, Key } = await import('@nut-tree-fork/nut-js');
+  const modKey: Record<string, number> = {
+    ctrl: process.platform === 'darwin' ? Key.LeftCmd : Key.LeftControl,
+    shift: Key.LeftShift,
+    alt: Key.LeftAlt,
+  };
+  const named: Record<string, number> = {
+    enter: Key.Enter,
+    tab: Key.Tab,
+    escape: Key.Escape,
+    backspace: Key.Backspace,
+    space: Key.Space,
+  };
+  const keyCode =
+    named[c.key] ??
+    (Key as unknown as Record<string, number>)[c.key.toUpperCase()];
+  if (keyCode === undefined) throw new Error(`Unsupported key: ${c.key}`);
+  for (const m of c.mods) await keyboard.pressKey(modKey[m]);
+  await keyboard.pressKey(keyCode);
+  await keyboard.releaseKey(keyCode);
+  for (const m of [...c.mods].reverse()) await keyboard.releaseKey(modKey[m]);
+}
+
+/** Presses a key combo in the currently focused window (voice commands). */
+export async function pressKeys(combo: string): Promise<void> {
+  const parsed = parseCombo(combo);
+  if (!parsed) throw new Error(`Unsupported key combo: ${combo}`);
+  // Give the OS a beat so the hotkey release doesn't swallow the input.
+  await new Promise((r) => setTimeout(r, 150));
+  if (process.platform === 'linux') {
+    if (await linuxPressKeys(parsed)) return;
+    throw new Error(
+      'Could not press keys in the focused window. Install ydotool (Wayland) or xdotool (X11).',
+    );
+  }
+  await nutJsPressKeys(parsed);
+}
+
 /**
- * Inserts `text` at the cursor of the currently focused field.
+ * Inserts `text` at the cursor of the currently focused field, then
+ * optionally presses a trailing key (e.g. Enter to send the message).
  * The transcript is left on the clipboard afterwards (per design), so the
  * user can always paste manually if keystroke injection is unavailable.
  */
-export async function pasteText(text: string): Promise<void> {
+export async function pasteText(
+  text: string,
+  then?: 'enter' | 'tab' | 'escape',
+): Promise<void> {
   if (process.platform === 'linux') {
     await linuxInsert(text);
-    return;
+  } else {
+    clipboard.writeText(text);
+    await new Promise((r) => setTimeout(r, 150));
+    await nutJsPasteKeystroke();
   }
-  clipboard.writeText(text);
-  await new Promise((r) => setTimeout(r, 150));
-  await nutJsPasteKeystroke();
+  if (then) {
+    // Let the target app settle after the text lands before the keypress.
+    await new Promise((r) => setTimeout(r, 100));
+    await pressKeys(then);
+  }
 }

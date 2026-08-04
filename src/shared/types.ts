@@ -3,6 +3,7 @@ export type AppState =
   | 'recording'
   | 'transcribing'
   | 'polishing'
+  | 'done'
   | 'error';
 
 export interface StatePayload {
@@ -89,6 +90,44 @@ export interface DownloadProgress {
   percent: number;
 }
 
+/**
+ * What a dictation should do after transcription. Resolved by the AI cleanup
+ * pass, or by the regex fallback parser when no AI provider is configured.
+ */
+export type VoiceAction =
+  /** Type text at the cursor; optionally press a key afterwards (e.g. send). */
+  | { kind: 'type'; text: string; then?: 'enter' | 'tab' | 'escape' }
+  /** Press keys only (e.g. "undo that" → ctrl+z). xdotool-style combo string. */
+  | { kind: 'command'; keys: string }
+  /** Store a user fact ("remember my address is …"). Nothing is typed. */
+  | { kind: 'remember'; key: string; value: string }
+  /** Recall a stored fact. Only produced by the fallback parser — the AI pass
+   *  substitutes memories inline and returns 'type' instead. */
+  | { kind: 'recall'; key: string };
+
+export interface MemoryEntry {
+  key: string;
+  value: string;
+  createdAt: number;
+}
+
+/** Formatting bucket the focused app falls into. */
+export type AppBucket =
+  | 'email'
+  | 'chat'
+  | 'code'
+  | 'document'
+  | 'browser'
+  | 'unknown';
+
+export interface AppContext {
+  /** Raw app identifier (WM_CLASS / process name). */
+  app: string;
+  /** Window title, when available. */
+  title: string;
+  bucket: AppBucket;
+}
+
 export type UpdateState =
   | 'idle'
   | 'checking'
@@ -144,4 +183,7 @@ export interface TypistApi {
   fetchAiModels(
     provider: AiCloudProvider,
   ): Promise<{ id: string; label: string }[]>;
+  getMemories(): Promise<MemoryEntry[]>;
+  deleteMemory(key: string): Promise<void>;
+  clearMemories(): Promise<void>;
 }

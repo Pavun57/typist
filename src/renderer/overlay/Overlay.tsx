@@ -46,6 +46,14 @@ export default function Overlay() {
     );
   }
 
+  if (payload.state === 'done') {
+    return (
+      <div className="pill done">
+        <span className="label">{payload.message ?? 'Done.'}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="pill error">
       <span className="label">{payload.message ?? 'Something went wrong.'}</span>

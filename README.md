@@ -20,6 +20,9 @@ Hotkey → speak → typed at your cursor. English and Tamil, fully offline.
 
 - **⌨️ Global push-to-talk** — one hotkey (`Ctrl+Shift+Space` / `Cmd+Shift+Space`, configurable) starts and stops dictation from anywhere
 - **🗣️ Truly multilingual** — auto-detect, or pin English, Hindi, Bengali, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati, Punjabi, or Odia
+- **🎛️ Voice commands, not just dictation** — say "send this" to type *and* hit Enter, "undo that" for Ctrl+Z, "new line", "select all", and more
+- **🧭 Context-aware typing** — knows whether you're in an email client, a chat app, or a code editor, and formats accordingly (paragraphs for email, one casual line for chat, literal in code)
+- **🧠 Memory** — "remember my address is …" saves a fact; later "type my address" drops it right in. Manage saved facts in Settings
 - **☁️ / 📴 Two STT engines, your choice**
   - **Sarvam AI (cloud)** — fast and excellent for Indian languages
   - **Local Whisper (offline)** — OpenAI Whisper running on your device; audio never leaves your machine
@@ -118,6 +121,33 @@ Models load when you dictate and **unload automatically after 5 minutes idle**. 
 
 The transcript also stays on your clipboard, so `Ctrl+V` always works as a fallback.
 
+### 🎛️ Voice commands
+
+Dictate naturally — Typist splits the command from the text:
+
+| You say | What happens |
+| --- | --- |
+| "hey Pavun the meeting moved to 4 **send this**" | types the message, then presses **Enter** |
+| "**undo that**" | presses **Ctrl+Z** |
+| "**redo**" | presses **Ctrl+Shift+Z** |
+| "**new line**" | presses **Enter** |
+| "**select all**" / "**copy**" / "**paste**" | the obvious shortcuts |
+| "**scratch that**" | presses **Backspace** |
+
+With an **AI cleanup** provider enabled (Settings → AI cleanup, free keys from Groq / OpenRouter / NVIDIA), natural phrasing is understood ("shoot that off", "jot this down and send it"). Without one, a built-in offline parser still catches the commands above.
+
+### 🧭 Context-aware typing
+
+Typist detects the app you're dictating into and formats for it: paragraphs in **email and documents**, a single casual line in **chat**, literal text in **code editors**. Detection is best-effort — on Wayland it depends on what the compositor exposes; when the app can't be identified, Typist falls back to safe single-line typing.
+
+### 🧠 Memory
+
+- "Remember my address is 12 Anna Nagar, Chennai" → saved (the pill confirms)
+- "Type my address" → the address is typed at your cursor
+- Works inline too: "ship it to my address"
+
+View and delete saved facts in **Settings → Memory**.
+
 ---
 
 ## 🔄 Updates
@@ -158,19 +188,28 @@ Releases for all three OSes are built by GitHub Actions (`.github/workflows/rele
 src/
   main/        Electron main process
     index.ts       bootstrap, tray, single-instance lock
-    controller.ts  idle → recording → transcribing state machine, STT routing
+    controller.ts  idle → recording → transcribing state machine, STT routing,
+                   voice-action execution (type / command / remember / recall)
     hotkey.ts      global shortcut registration
     sarvam.ts      Sarvam cloud STT client (+ API key validation)
     local-stt.ts   offline Whisper engine (download/delete, idle auto-unload)
+    sherpa-stt.ts  sherpa-onnx CTC models (Dolphin / Omnilingual)
+    ai-cleanup.ts  AI intent pass: rewrite + context formatting + memory +
+                   command detection, via Groq / OpenRouter / NVIDIA
+    commands.ts    offline regex fallback for commands & memory (no AI key)
+    memory.ts      persistent user facts ("remember my address is …")
+    active-window.ts  focused-app detection (xdotool/kdotool, AppleScript, user32)
     audio.ts       PCM → WAV encoding
-    paste.ts       text insertion (ydotool/wtype/xdotool on Linux, nut.js elsewhere)
+    paste.ts       text insertion & key presses (ydotool/wtype/xdotool on
+                   Linux, nut.js elsewhere)
     settings.ts    electron-store, safeStorage-encrypted API key
     updater.ts     auto-updates via electron-updater + GitHub Releases
     ipc.ts         IPC handlers
     windows.ts     settings / overlay / recorder window factories
   preload/     contextBridge API (window.typist)
   renderer/
-    settings/  React settings window (engine, API key, models, hotkey, updates)
+    settings/  React settings window (engine, API key, models, hotkey,
+               memory, updates)
     overlay/   frameless always-on-top status pill
     recorder/  hidden window owning the microphone (AudioWorklet, 16 kHz PCM)
   shared/      types shared between main, preload, and renderers

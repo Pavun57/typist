@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
 import type {
   AiCloudProvider,
   DownloadProgress,
+  MemoryEntry,
   Result,
   Settings,
   SttProviderId,
@@ -10,6 +11,7 @@ import type {
 import { getSettings, setSettings } from './settings';
 import { validateApiKey } from './sarvam';
 import { registerHotkey } from './hotkey';
+import { clearMemories, deleteMemory, listMemories } from './memory';
 import {
   deleteModel,
   downloadModel,
@@ -114,6 +116,16 @@ export function registerIpc(getSettingsWin: () => BrowserWindow | null): void {
 
   ipcMain.handle('recording:cancel', (): void => {
     cancelRecording();
+  });
+
+  ipcMain.handle('memory:list', (): MemoryEntry[] => listMemories());
+
+  ipcMain.handle('memory:delete', (_e, key: string): void => {
+    deleteMemory(key);
+  });
+
+  ipcMain.handle('memory:clear', (): void => {
+    clearMemories();
   });
 
   ipcMain.on('recorder:audio', (_e, buffer: ArrayBuffer) => {

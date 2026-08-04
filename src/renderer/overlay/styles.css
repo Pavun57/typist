@@ -122,3 +122,10 @@ body {
   color: var(--accent);
   border-color: rgba(200, 16, 46, 0.4);
 }
+
+/* ---- Done (command executed / memory saved) ---- */
+
+.pill.done {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.4);
+}

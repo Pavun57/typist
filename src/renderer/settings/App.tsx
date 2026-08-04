@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AI_MODELS, LANGUAGES } from '../../shared/types';
 import type {
   AiProviderId,
+  MemoryEntry,
   ModelInfo,
   Settings,
   SttState,
@@ -52,8 +53,10 @@ export default function App() {
   const [aiKeyStatus, setAiKeyStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [testingAi, setTestingAi] = useState(false);
   const [aiModels, setAiModels] = useState<{ id: string; label: string }[]>([]);
+  const [memories, setMemories] = useState<MemoryEntry[]>([]);
 
   const refreshStt = () => window.typist.getSttState().then(setStt);
+  const refreshMemories = () => window.typist.getMemories().then(setMemories);
 
   const loadAiModels = (provider: 'groq' | 'openrouter' | 'nvidia') => {
     window.typist
@@ -89,13 +92,18 @@ export default function App() {
       if (s.aiProvider !== 'none') loadAiModels(s.aiProvider);
     });
     void refreshStt();
+    void refreshMemories();
     const offProgress = window.typist.onDownloadProgress((p) => {
       setDownloading((d) => ({ ...d, [p.modelId]: p.percent }));
     });
     const offUpdate = window.typist.onUpdateStatus(setUpdate);
+    // Facts can be added by voice while this window is open.
+    const onFocus = () => void refreshMemories();
+    window.addEventListener('focus', onFocus);
     return () => {
       offProgress();
       offUpdate();
+      window.removeEventListener('focus', onFocus);
     };
   }, []);
 
@@ -399,6 +407,46 @@ export default function App() {
           </label>
         </>
       )}
+
+      <div className="field">
+        <label>Memory</label>
+        <span className="hint">
+          Facts Typist remembers for you. While dictating, say "remember my
+          address is …" to save one, and "type my address" to use it.
+        </span>
+        {memories.length === 0 ? (
+          <span className="hint">Nothing saved yet.</span>
+        ) : (
+          <>
+            {memories.map((m) => (
+              <div key={m.key} className="model-card">
+                <div className="model-info">
+                  <strong>{m.key}</strong>
+                  <span className="hint">{m.value}</span>
+                </div>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    void window.typist.deleteMemory(m.key).then(refreshMemories)
+                  }
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+            <div className="row">
+              <button
+                className="secondary"
+                onClick={() =>
+                  void window.typist.clearMemories().then(refreshMemories)
+                }
+              >
+                Clear all
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="field">
         <label htmlFor="language">Spoken language</label>

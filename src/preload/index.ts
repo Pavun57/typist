@@ -45,6 +45,9 @@ const api: TypistApi = {
     ipcRenderer.invoke('ai:validate', provider, key),
   fetchAiModels: (provider: AiCloudProvider) =>
     ipcRenderer.invoke('ai:models', provider),
+  getMemories: () => ipcRenderer.invoke('memory:list'),
+  deleteMemory: (key: string) => ipcRenderer.invoke('memory:delete', key),
+  clearMemories: () => ipcRenderer.invoke('memory:clear'),
 };
 
 contextBridge.exposeInMainWorld('typist', api);
