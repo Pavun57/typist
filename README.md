@@ -23,6 +23,7 @@ Hotkey → speak → typed at your cursor. English and Tamil, fully offline.
 - **🎛️ Voice commands, not just dictation** — say "send this" to type *and* hit Enter, "undo that" for Ctrl+Z, "new line", "select all", and more
 - **🧭 Context-aware typing** — knows whether you're in an email client, a chat app, or a code editor, and formats accordingly (paragraphs for email, one casual line for chat, literal in code)
 - **🧠 Memory** — "remember my address is …" saves a fact; later "type my address" drops it right in. Manage saved facts in Settings
+- **👁️ Screen-aware coding help** — "solve this" / "fix this error" screenshots the active window and asks your **local Claude Code or Codex CLI** (no API key) or a cloud vision model. Answers are typed into editors, pasted into terminals
 - **☁️ / 📴 Two STT engines, your choice**
   - **Sarvam AI (cloud)** — fast and excellent for Indian languages
   - **Local Whisper (offline)** — OpenAI Whisper running on your device; audio never leaves your machine
@@ -68,7 +69,7 @@ Grab the latest package for your OS from [**Releases**](https://github.com/Pavun
 Typing into other apps goes through `/dev/uinput` via `ydotool`, and the Wayland clipboard via `wl-copy`:
 
 ```bash
-sudo apt install ydotool wl-clipboard
+sudo apt install ydotool ydotoold wl-clipboard
 sudo groupadd -f input
 sudo usermod -aG input $USER
 echo 'KERNEL=="uinput", GROUP="input", MODE="0660", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/85-uinput.rules
@@ -76,6 +77,8 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 sudo setfacl -m u:$USER:rw /dev/uinput   # applies immediately, no re-login
 ```
+
+Typist starts `ydotoold` automatically if it's installed. Voice-command keystrokes (Enter, Ctrl+Z, …) use Typist's own uinput injector, so they work on every Wayland compositor including KWin. Optional extras: `kdotool` (focused-app detection on KDE Wayland), `spectacle` (KDE) or `gnome-screenshot` (GNOME) for screen-aware coding help.
 
 On X11, `xdotool` is used instead (`sudo apt install xdotool`) — no setup needed.
 
@@ -147,6 +150,16 @@ Typist detects the app you're dictating into and formats for it: paragraphs in *
 - Works inline too: "ship it to my address"
 
 View and delete saved facts in **Settings → Memory**.
+
+### 👁️ Screen-aware coding help
+
+Focus an editor or terminal with a problem visible, then say **"solve this"**, **"fix this error"**, or **"write the code for this"**:
+
+1. Typist screenshots the **active window** (only on these explicit phrases — plain dictation never touches your screen)
+2. The problem goes to your coding assistant — **locally installed Claude Code / Codex CLI** by default (uses their own auth, no API key), with a cloud vision model as fallback
+3. The answer is **typed into editors** or **pasted into terminals** (so multi-line code never executes early in a CLI)
+
+Pick the assistant in **Settings → Screen coding help** (Auto / Claude Code / Codex / Cloud AI). On Linux, screen capture needs `spectacle` (KDE) or `gnome-screenshot` (GNOME).
 
 ---
 
