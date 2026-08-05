@@ -83,6 +83,13 @@ a {
 .nav-links a:hover {
   color: var(--ink);
 }
+.nav-links a.btn-primary {
+  color: #fff;
+}
+.nav-links a.btn-primary:hover {
+  color: #fff;
+  background: var(--accent-hover);
+}
 
 .btn {
   display: inline-flex;
