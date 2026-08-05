@@ -43,28 +43,38 @@ a {
   color: inherit;
 }
 
-/* ---------- Nav ---------- */
+/* ---------- Nav (floating island) ---------- */
 
 .nav {
   position: sticky;
-  top: 0;
+  top: 14px;
   z-index: 10;
-  background: rgba(250, 249, 247, 0.85);
+  margin: 14px auto 0;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(28, 25, 23, 0.1);
 }
 .nav .wrap {
+  max-width: none;
+  padding: 0 8px 0 20px;
+  height: 54px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  gap: 20px;
 }
 .logo {
   font-family: var(--font-display), system-ui, sans-serif;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
   text-decoration: none;
+  white-space: nowrap;
 }
 .logo .dot {
   color: var(--accent);
@@ -210,8 +220,25 @@ a {
   color: var(--ink-40);
 }
 
-.pill-demo {
+.video-frame {
+  position: relative;
+  max-width: 860px;
   margin: 48px auto 0;
+}
+.hero video {
+  width: 100%;
+  display: block;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 64px rgba(28, 25, 23, 0.14);
+  background: var(--dark);
+}
+/* Floats over the demo video, exactly like the real overlay pill floats over apps. */
+.pill-demo {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   gap: 11px;
@@ -220,9 +247,10 @@ a {
   border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: 0 14px 40px rgba(28, 25, 23, 0.12);
+  box-shadow: 0 14px 40px rgba(28, 25, 23, 0.22);
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .bars {
   display: flex;
@@ -261,16 +289,6 @@ a {
   50% {
     height: 17px;
   }
-}
-
-.hero video {
-  width: 100%;
-  max-width: 860px;
-  margin-top: 48px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  box-shadow: 0 24px 64px rgba(28, 25, 23, 0.14);
-  background: var(--dark);
 }
 
 /* ---------- Sections ---------- */
