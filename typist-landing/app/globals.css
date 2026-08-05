@@ -94,11 +94,14 @@ a {
   color: var(--ink);
 }
 .nav-links a.btn-primary {
-  color: #fff;
+  color: var(--accent);
+  background: transparent;
+  border-color: var(--accent);
+  border-radius: 999px;
 }
 .nav-links a.btn-primary:hover {
-  color: #fff;
-  background: var(--accent-hover);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .btn {
@@ -223,7 +226,7 @@ a {
 .video-frame {
   position: relative;
   max-width: 860px;
-  margin: 48px auto 0;
+  margin: 28px auto 0;
 }
 .hero video {
   width: 100%;
@@ -233,13 +236,11 @@ a {
   box-shadow: 0 24px 64px rgba(28, 25, 23, 0.14);
   background: var(--dark);
 }
-/* Floats over the demo video, exactly like the real overlay pill floats over apps. */
+/* The listening pill, above the demo video. */
 .pill-demo {
-  position: absolute;
-  left: 50%;
-  bottom: 64px;
-  transform: translateX(-50%);
-  display: inline-flex;
+  margin: 44px auto 0;
+  width: fit-content;
+  display: flex;
   align-items: center;
   gap: 11px;
   height: 46px;
@@ -247,7 +248,7 @@ a {
   border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: 0 14px 40px rgba(28, 25, 23, 0.22);
+  box-shadow: 0 14px 40px rgba(28, 25, 23, 0.12);
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;

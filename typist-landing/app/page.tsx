@@ -164,18 +164,18 @@ export default function Home() {
           <p className="note">
             Linux · macOS · Windows. The open-source alternative to Wispr Flow.
           </p>
+          <div className="pill-demo">
+            <span className="bars">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+            Listening…
+          </div>
           <div className="video-frame">
             <video src={DEMO_VIDEO} controls preload="metadata" />
-            <div className="pill-demo">
-              <span className="bars">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </span>
-              Listening…
-            </div>
           </div>
         </div>
       </header>
